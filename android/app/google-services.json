@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "110457770025",
+    "project_id": "homecook-9e577",
+    "storage_bucket": "homecook-9e577.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:110457770025:android:4778243da249fd3e290c38",
+        "android_client_info": {
+          "package_name": "com.example.homecook"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1UA6EJT8-YedwOhpS0Bo8AqXuQQWA3j0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

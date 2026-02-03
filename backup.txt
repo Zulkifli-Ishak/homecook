@@ -1,0 +1,4307 @@
+import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_tts/flutter_tts.dart'; // 1. Add this import at the very top
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:convert';
+import 'dart:typed_data'; // Required for web bytes
+import 'package:video_player/video_player.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  if (kIsWeb) {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: "AIzaSyBYIGyKpaMDCTSQJ7cMJj31BYqO_ljtcXY",
+        authDomain: "homecook-9e577.firebaseapp.com",
+        projectId: "homecook-9e577",
+        storageBucket: "homecook-9e577.firebasestorage.app",
+        messagingSenderId: "110457770025",
+        appId: "1:110457770025:web:4cfb151f16deae59290c38"
+      ),
+    );
+  } else {
+    await Firebase.initializeApp();
+  }
+
+  runApp(const HomecookApp());
+}
+
+class HomecookApp extends StatelessWidget {
+  const HomecookApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'HomeCook',
+      // StreamBuilder listens to Firebase. 
+      // Whenever the user logs in or logs out, the app switches screens automatically!
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // If Firebase is still "thinking", show a loading spinner
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator(color: Colors.green)),
+            );
+          }
+          
+          // If we have a user, go to Home. Otherwise, show Login.
+          if (snapshot.hasData) {
+            return const MainNavigation();
+          } else {
+            return const LoginPage();
+          }
+        },
+      ),
+    );
+  }
+}
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('My First Flutter App'),
+        ),
+        body: const Center(
+          child: Text('Hello Flutter'),
+        ),
+      ),
+    );
+  }
+}
+
+
+
+
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  void _handleLogin() async {
+  try {
+    // 1. Ask Firebase to check the credentials
+    await FirebaseAuth.instance.signInWithEmailAndPassword(
+      email: _emailController.text.trim(),
+      password: _passwordController.text.trim(),
+    );
+
+    // 2. If it works, redirect to Home
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (context) => const MainNavigation()),
+    );
+
+  } on FirebaseAuthException catch (e) {
+    // 3. Handle specific errors
+    String errorMessage = "Login failed. Please try again.";
+    
+    if (e.code == 'user-not-found') {
+      errorMessage = "No account found for this email.";
+    } else if (e.code == 'wrong-password') {
+      errorMessage = "Incorrect password.";
+    } else if (e.code == 'invalid-email') {
+      errorMessage = "The email address is not valid.";
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(errorMessage)),
+    );
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(30.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.restaurant_menu, size: 80, color: Colors.green),
+            const SizedBox(height: 20),
+            const Text("Homecook", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green)),
+            const Text("Your Halal Kitchen Assistant", style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 50),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _handleLogin,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: const Text("Login", style: TextStyle(color: Colors.white, fontSize: 18)),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SignUpPage()),
+                );
+              }, 
+              child: const Text("Don't have an account? Sign Up"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FeedScreen extends StatelessWidget {
+  const FeedScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('HomeCook'),
+          centerTitle: true,
+          // --- ADDED SEARCH BUTTON HERE ---
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                // This opens the search overlay
+                showSearch(
+                  context: context,
+                  delegate: RecipeSearchDelegate(),
+                );
+              },
+            ),
+          ],
+          bottom: const TabBar(
+            indicatorColor: Colors.green,
+            labelColor: Colors.green,
+            unselectedLabelColor: Colors.grey,
+            tabs: [
+              Tab(text: "Following"),
+              Tab(text: "Explore"),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            ListView.builder(
+              itemCount: 3, 
+              itemBuilder: (context, index) => const RecipeCard(),
+            ),
+            ListView.builder(
+              itemCount: 5, 
+              itemBuilder: (context, index) => const RecipeCard(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+// --- SEARCH LOGIC CLASS ---
+
+class RecipeSearchDelegate extends SearchDelegate {
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.clear),
+        onPressed: () => query = '',
+      ),
+    ];
+  }
+
+  @override
+  Widget? buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) => _searchLogic(context);
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _searchLogic(context);
+
+  Widget _searchLogic(BuildContext context) {
+    // 1. FORCE THE QUERY TO LOWERCASE
+    final String searchKey = query.trim().toLowerCase();
+
+    // 2. CHOOSE THE QUERY
+    final Query<Map<String, dynamic>> userQuery = query.isEmpty
+        ? FirebaseFirestore.instance
+            .collection('users')
+            .orderBy('createdAt', descending: true)
+            .limit(10)
+        : FirebaseFirestore.instance
+            .collection('users')
+            // SEARCH AGAINST THE LOWERCASE FIELD
+            .where('username_lowercase', isGreaterThanOrEqualTo: searchKey)
+            .where('username_lowercase', isLessThanOrEqualTo: '$searchKey\uf8ff');
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: userQuery.snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Colors.green));
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Text("No users found"));
+        }
+
+        final users = snapshot.data!.docs;
+
+        return ListView.builder(
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+            final userData = users[index].data() as Map<String, dynamic>;
+            // DISPLAY THE ORIGINAL CASING (e.g., "Marang")
+            final String username = userData['username'] ?? "Anonymous";
+            final int stars = userData['stars'] ?? 0;
+
+            return ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Colors.green,
+                child: Icon(Icons.person, color: Colors.white),
+              ),
+              title: Text(username, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: query.isEmpty
+                  ? const Text("New Member ✨", style: TextStyle(color: Colors.blue))
+                  : Text("⭐ $stars Stars"),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: () {
+                // 1. Get the UID of the user you clicked
+                final String selectedUserId = users[index].id;
+
+                // 2. Push the PublicProfilePage and pass the ID
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PublicProfilePage(userId: selectedUserId),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class RecipeCard extends StatelessWidget {
+  const RecipeCard({super.key});
+
+  void _showTipDialog(BuildContext context) {
+    int userBalance = 150;
+    final TextEditingController _customController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 25, right: 25, top: 25
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Support with Stars", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Row(
+                  children: [
+                    const Icon(Icons.stars, color: Colors.orange, size: 18),
+                    const SizedBox(width: 5),
+                    Text("$userBalance", style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 15,
+              runSpacing: 15,
+              alignment: WrapAlignment.center,
+              children: [
+                _starOption(context, 1, "⭐"),
+                _starOption(context, 10, "🔥"),
+                _starOption(context, 50, "🏆"),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Text("— OR —", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _customController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: "Enter custom amount",
+                prefixIcon: const Icon(Icons.stars, color: Colors.orange),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.send, color: Colors.green),
+                  onPressed: () {
+                    if (_customController.text.isNotEmpty) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Sent ${_customController.text} Stars to Chef!")),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _starOption(BuildContext context, int amount, String emoji) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Sent $amount Stars to Chef!")),
+        );
+      },
+      child: Container(
+        width: 70,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 24)),
+            const SizedBox(height: 5),
+            Text("$amount", style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+Widget build(BuildContext context) {
+  return Card(
+    margin: const EdgeInsets.only(bottom: 25, left: 10, right: 10),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. HEADER
+        InkWell(
+          onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage()));
+          },
+          child: ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.person, color: Colors.white)),
+            // DYNAMIC: Real username and time
+            title: Text("Chef Ahmad", style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text("Viral Sambal Specialist •"),
+            trailing: const Icon(Icons.more_horiz),
+          ),
+        ),
+
+        // 2. MAIN BODY
+        InkWell(
+          
+          child: Column(
+            children: [
+              Container(
+                height: 250,
+                width: double.infinity,
+                color: Colors.black, // Better for videos
+                // DYNAMIC: Show video if it's a video, otherwise image
+                
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                color: Colors.green[50],
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("👥 23 tried this", style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                    Text("✅ 80% Success Rate", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // DYNAMIC: Real Title
+                    Text("Authentic Recipe", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 5),
+                    // DYNAMIC: Real Caption
+                    Text("", maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // 3. ACTION BAR
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+          child: Row(
+            children: [
+              IconButton(icon: const Icon(Icons.favorite_border), onPressed: () {}),
+              // DYNAMIC: Real Like Count
+              Text(""),
+              
+             
+              const Text("45"),
+              
+              const Spacer(),
+
+              TextButton.icon(
+                onPressed: () => _showTipDialog(context),
+                icon: const Icon(Icons.stars, color: Colors.orange, size: 20),
+                label: const Text("Support", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+              ),
+
+              const SizedBox(width: 8),
+
+              ElevatedButton.icon(
+                // FIXED: Removed quotes so function actually runs
+                onPressed: () => "_showRecipeOverview(context, data)",
+                icon: const Icon(Icons.restaurant_menu, size: 16),
+                label: const Text("RECIPE"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green, 
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+}
+
+
+
+class KitchenPage extends StatefulWidget {
+  // 1. Add the recipeData variable
+  final Map<String, dynamic> recipeData;
+
+  // 2. Update the constructor to REQUIRE the data
+  const KitchenPage({super.key, required this.recipeData});
+
+  @override
+  State<KitchenPage> createState() => _KitchenPageState();
+}
+
+class _KitchenPageState extends State<KitchenPage> {
+  stt.SpeechToText _speech = stt.SpeechToText();
+  FlutterTts _tts = FlutterTts();
+  
+  bool _isListening = false;
+  bool _isProcessing = false;
+  int _currentStep = 0;
+
+  // 3. Create a dynamic instructions list
+  List<String> _instructions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareInstructions(); // Combine welcome + database steps + finish
+    _initSpeech();
+    _speak(_instructions[_currentStep]); 
+  }
+
+  void _prepareInstructions() {
+    String title = widget.recipeData['title'] ?? "this recipe";
+    List rawSteps = widget.recipeData['instructions'] ?? [];
+
+    setState(() {
+      _instructions = [
+        "Welcome to Homecook. Are you ready to make $title? Say Next to begin.",
+        ...rawSteps.map((s) => s.toString()), // Add all steps from Firestore
+        "You are done! Enjoy your delicious meal. Say Exit to finish."
+      ];
+    });
+  }
+
+  // --- Voice Logic ---
+  Future _speak(String text) async {
+    await _tts.setLanguage("en-US");
+    await _tts.setPitch(1.0);
+    await _tts.speak(text);
+  }
+
+  void _initSpeech() async {
+    bool available = await _speech.initialize();
+    if (available) _startListening();
+  }
+
+  void _startListening() async {
+    if (_isProcessing) return;
+    await _speech.listen(
+      onResult: (result) {
+        if (_isProcessing) return;
+        String words = result.recognizedWords.toLowerCase();
+        
+        if (words.contains("next") || words.contains("forward")) {
+          _moveStep(1);
+        } else if (words.contains("back") || words.contains("previous")) {
+          _moveStep(-1);
+        } else if (words.contains("exit") || words.contains("stop")) {
+          Navigator.pop(context);
+        }
+      },
+    );
+    setState(() => _isListening = true);
+  }
+
+  void _moveStep(int direction) {
+    int targetStep = _currentStep + direction;
+    if (targetStep >= 0 && targetStep < _instructions.length) {
+      setState(() {
+        _isProcessing = true;
+        _currentStep = targetStep;
+      });
+      
+      _speech.stop();
+      _speak(_instructions[_currentStep]); 
+
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) {
+          setState(() => _isProcessing = false);
+          _startListening();
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text(widget.recipeData['title'] ?? 'Smart Kitchen'), 
+        backgroundColor: Colors.green
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(30.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Visual feedback for the microphone
+            
+            Icon(
+              _isProcessing ? Icons.volume_up : Icons.mic, 
+              color: _isProcessing ? Colors.orange : Colors.green, 
+              size: 80
+            ),
+            const SizedBox(height: 20),
+            Text(
+              "Step ${_currentStep} of ${_instructions.length - 1}",
+              style: TextStyle(color: Colors.grey[600], fontSize: 18),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _instructions[_currentStep],
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 50),
+            const Text("Voice Commands: 'Next', 'Back', 'Exit'", 
+                style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context), 
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red[50], foregroundColor: Colors.red),
+              child: const Text("Stop Cooking"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+class MainNavigation extends StatefulWidget {
+  const MainNavigation({super.key});
+
+  @override
+  State<MainNavigation> createState() => _MainNavigationState();
+}
+
+class _MainNavigationState extends State<MainNavigation> {
+  int _selectedIndex = 0;
+
+  // 1. Updated the pages list to include the Inbox
+  final List<Widget> _pages = [
+    const FeedScreen(),
+    const WalletScreen(),
+    const InboxScreen(),   // NEW: The Messaging/Notifications hub
+    const ProfileScreen(),
+    const SettingsScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.green,
+        unselectedItemColor: Colors.grey,
+        // 'fixed' is perfect here to prevent icons from shifting
+        type: BottomNavigationBarType.fixed, 
+        onTap: (index) => setState(() => _selectedIndex = index),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Feed'),
+          BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'Wallet'),
+          
+          // 2. Added Inbox with a Notification Badge
+          BottomNavigationBarItem(
+            icon: Badge(
+              label: Text('2'), // Shows number of unread messages/likes
+              child: Icon(Icons.mail_outline),
+            ), 
+            label: 'Inbox',
+            activeIcon: Icon(Icons.mail),
+          ),
+          
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+
+class WalletScreen extends StatelessWidget {
+  const WalletScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("My Wallet", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0.5,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. MAIN BALANCE CARD
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(25),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green[700]!, Colors.green[400]!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Current Balance", style: TextStyle(color: Colors.white70, fontSize: 16)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.stars, color: Colors.orangeAccent, size: 30),
+                      const SizedBox(width: 10),
+                      const Text(
+                        "1,250",
+                        style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  const Text("≈ RM 125.00", style: TextStyle(color: Colors.white, fontSize: 14)),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
+            // 2. STATS ROW (Lifetime Earnings)
+            Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Total Stars Received", style: TextStyle(fontWeight: FontWeight.w600)),
+                  Row(
+                    children: [
+                      const Icon(Icons.history_edu, size: 18, color: Colors.grey),
+                      const SizedBox(width: 5),
+                      Text("5,840", style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // 3. ACTION BUTTONS (Topup & Cashout)
+            const Text("Actions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildActionButton(
+                    label: "Top-up Stars",
+                    icon: Icons.add_circle_outline,
+                    color: Colors.blue,
+                    onTap: () {},
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: _buildActionButton(
+                    label: "Cash-out",
+                    icon: Icons.account_balance_wallet,
+                    color: Colors.orange,
+                    onTap: () {},
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 30),
+
+            // 4. RECENT TRANSACTIONS
+            const Text("Recent Transactions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            _buildTransactionTile("Chef Ahmad", "+50 Stars", "Today", Colors.green),
+            _buildTransactionTile("Cashout", "-500 Stars", "Yesterday", Colors.red),
+            _buildTransactionTile("Siti_Cooks", "+100 Stars", "25 Jan", Colors.green),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({required String label, required IconData icon, required Color color, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          border: Border.all(color: color.withOpacity(0.3)),
+          borderRadius: BorderRadius.circular(15),
+          color: color.withOpacity(0.05),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 30),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionTile(String title, String amount, String date, Color amountColor) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(backgroundColor: Colors.grey[200], child: const Icon(Icons.receipt_long, size: 20, color: Colors.grey)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      subtitle: Text(date),
+      trailing: Text(amount, style: TextStyle(color: amountColor, fontWeight: FontWeight.bold, fontSize: 16)),
+    );
+  }
+}
+
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+
+  // --- LOGIC: DELETE ACCOUNT ---
+  Future<void> _handleDeleteAccount(BuildContext context, String password) async {
+  try {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1. Create the credential to re-verify the user
+    AuthCredential credential = EmailAuthProvider.credential(
+      email: user.email!,
+      password: password,
+    );
+
+    // 2. Attempt to re-authenticate
+    // If the password is wrong, this line will "throw" an error and jump to the 'catch' block
+    await user.reauthenticateWithCredential(credential);
+
+    // 3. If we reach here, the password was CORRECT. Proceed with deletion.
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+    await user.delete();
+
+    // 4. Manual redirect as a backup to the StreamBuilder
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (route) => false,
+      );
+    }
+
+  } on FirebaseAuthException catch (e) {
+    // --- THIS IS THE WRONG PASSWORD CATCH ---
+    String errorMessage = "An error occurred. Please try again.";
+
+    if (e.code == 'wrong-password') {
+      errorMessage = "Incorrect password. Account was not deleted.";
+    } else if (e.code == 'invalid-credential') {
+      errorMessage = "The password you entered is incorrect.";
+    } else if (e.code == 'network-request-failed') {
+      errorMessage = "Connection error. Please check your internet.";
+    }
+
+    // Show the red snackbar at the bottom
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  } catch (e) {
+    // Catches any non-Firebase errors
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Unexpected error. Please try again.")),
+      );
+    }
+  }
+}
+
+  // --- UI: DELETE CONFIRMATION DIALOG ---
+  void _showDeleteDialog(BuildContext context) {
+    final TextEditingController passwordController = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Account?", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("This action cannot be undone. All your data will be wiped."),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "Enter Password",
+                hintText: "Confirm your identity",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              // Only close the dialog and start the process if the field isn't empty
+              if (passwordController.text.isNotEmpty) {
+                // Note: We DON'T pop here yet, so the user stays on the dialog 
+                // until the deletion is successful or an error shows.
+                await _handleDeleteAccount(context, passwordController.text);
+                
+                // If the account was deleted, the whole page will vanish.
+                // If not, the user can try again!
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text("Delete Forever", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        centerTitle: true,
+      ),
+      body: ListView(
+        children: [
+          const ListTile(
+            leading: Icon(Icons.person_outline),
+            title: Text("Account Information"),
+            trailing: Icon(Icons.chevron_right),
+          ),
+          const ListTile(
+            leading: Icon(Icons.notifications_none),
+            title: Text("Notification Preferences"),
+            trailing: Icon(Icons.chevron_right),
+          ),
+          const ListTile(
+            leading: Icon(Icons.security),
+            title: Text("Privacy & Security"),
+            trailing: Icon(Icons.chevron_right),
+          ),
+          const Divider(),
+          
+          // --- LOGOUT BUTTON ---
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text("Logout", style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
+
+          // --- DELETE ACCOUNT BUTTON ---
+          ListTile(
+            leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+            title: const Text("Delete Account", style: TextStyle(color: Colors.red)),
+            subtitle: const Text("Permanently erase your account data"),
+            onTap: () => _showDeleteDialog(context),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
+
+  @override
+  State<SignUpPage> createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<SignUpPage> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController(); // Added password
+
+  void _handleSignUp() async {
+  if (_nameController.text.isNotEmpty && _emailController.text.isNotEmpty) {
+    try {
+      // Create user in Auth first to make sure email/pass are valid
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      // ONLY if successful, show the Halal question
+      _showDietaryDialog();
+      
+    } catch (e) {
+      // If email exists or password is too short, show error here
+      // The dialog will NEVER pop up if this fails
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Account Error: ${e.toString()}")),
+      );
+    }
+  }
+}
+
+  // The "Good Way" to ask about Halal preferences
+  void _showDietaryDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must choose
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Personalize Your Feed", textAlign: TextAlign.center),
+        content: const Text(
+          "To provide the best experience, would you like to see only Halal-certified recipes and content?",
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => _finalizeSignUp(false),
+            child: const Text("Show All", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => _finalizeSignUp(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: StadiumBorder()),
+            child: const Text("Yes, Halal Only", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 2. Updated Finalize logic to Redirect
+void _finalizeSignUp(bool isHalalOnly) async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Save to Firestore
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'username': _nameController.text.trim(),
+      'username_lowercase': _nameController.text.trim().toLowerCase(),
+      'email': _emailController.text.trim(),
+      'isHalalOnly': isHalalOnly,
+      'stars': 0,               // Wallet balance
+      'recentTransaction': 0,   // Latest star change
+      'followers': 0,
+      'following': 0,
+      'successRecipes': 0,      // Number of completed dishes
+      'createdAt': DateTime.now(),
+    });
+
+    // --- THE FIX IS HERE ---
+    
+    // 1. Close the Dialog
+    Navigator.pop(context); 
+    
+    // 2. Jump to Home Screen (MainNavigation)
+    // pushReplacement makes sure they can't click "back" to the signup page
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (context) => const MainNavigation()),
+    );
+    
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Database Error: ${e.toString()}")),
+    );
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.green),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(30.0),
+        child: Column(
+          children: [
+            const Text("Join Homecook", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.green)),
+            const SizedBox(height: 10),
+            const Text("Your community for great food", style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 40),
+            
+            _buildTextField(_nameController, "Username", Icons.person),
+            const SizedBox(height: 20),
+            _buildTextField(_emailController, "Email Address", Icons.email),
+            const SizedBox(height: 20),
+            _buildTextField(_passwordController, "Password", Icons.lock, isObscure: true),
+            
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                onPressed: _handleSignUp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                ),
+                child: const Text("Create Account", style: TextStyle(color: Colors.white, fontSize: 18)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {bool isObscure = false}) {
+    return TextField(
+      controller: controller,
+      obscureText: isObscure,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: Colors.green),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.green, width: 2),
+        ),
+      ),
+    );
+  }
+}
+
+
+
+// 1. Convert to StatefulWidget to allow setState
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  // 2. Define the loading variable here
+  bool _isUploading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _showCreateMenu(context),
+          backgroundColor: Colors.green,
+          child: const Icon(Icons.add, color: Colors.white, size: 30),
+        ),
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverAppBar(
+                expandedHeight: 420,
+                pinned: true,
+                backgroundColor: Colors.white,
+                elevation: 0,
+                title: const Text("My Portfolio", style: TextStyle(color: Colors.black)),
+                flexibleSpace: FlexibleSpaceBar(
+                  background: SingleChildScrollView(
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 80, bottom: 20),
+                      child: StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator(color: Colors.green));
+                          }
+                          final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+                          
+                          // 3. Pass the data map to the header
+                          return _buildMyProfileHeader(
+                            data['username'] ?? "New Cook",
+                            data['stars'] ?? 0,
+                            data['followers'] ?? 0,
+                            data['following'] ?? 0,
+                            data['successRecipes'] ?? 0,
+                            data, 
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                bottom: const PreferredSize(
+                  preferredSize: Size.fromHeight(48),
+                  child: Material( // Added Material for cleaner TabBar look
+                    color: Colors.white,
+                    child: TabBar(
+                      indicatorColor: Colors.green,
+                      labelColor: Colors.green,
+                      unselectedLabelColor: Colors.grey,
+                      tabs: [
+                        Tab(text: "Posts"),
+                        Tab(text: "Recipes"),
+                        Tab(text: "Saved"),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ];
+          },
+          body: TabBarView(
+            children: [
+              PostsTab(viewingUid: user?.uid ?? ""),
+              const RecipesTab(),
+              const FavoritesTab(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- PRIVATE HEADER (Now inside the State class) ---
+  Widget _buildMyProfileHeader(String name, int stars, int followers, int following, int success, Map<String, dynamic> userData) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () => _showProfileMenu(context, userData),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.green[100],
+                    // Check BOTH potential field names from your screenshot
+                    backgroundImage: (userData['profilePic'] != null && userData['profilePic'] != "")
+                      ? NetworkImage(userData['profilePic'])
+                      : (userData['profileImageUrl'] != null && userData['profileImageUrl'] != "")
+                          ? NetworkImage(userData['profileImageUrl'])
+                          : null,
+                    child: (userData['profilePic'] == null || userData['profilePic'] == "") && 
+                          (userData['profileImageUrl'] == null || userData['profileImageUrl'] == "")
+                        ? const Icon(Icons.person, size: 40, color: Colors.green)
+                        : null,
+                  ),
+              if (_isUploading)
+                const SizedBox(
+                  height: 80,
+                  width: 80,
+                  child: CircularProgressIndicator(color: Colors.green, strokeWidth: 3),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const Text("Home Cook Enthusiast 🌶️", style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 15),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _profileStat("Following", following.toString()),
+            _profileStat("Followers", followers.toString()),
+            _profileStat("Success", "$success%"),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _buildWalletBox(stars),
+      ],
+    );
+  }
+
+  Widget _buildWalletBox(int stars) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 25),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange[50],
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.orange[200]!),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.stars, color: Colors.orange, size: 20),
+            const SizedBox(width: 10),
+            const Text("Wallet Balance: ", style: TextStyle(fontWeight: FontWeight.w600)),
+            Text("$stars Stars", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _profileStat(String label, String value) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+      ],
+    );
+  }
+
+  // --- UPLOAD LOGIC ---
+
+  void _showProfileMenu(BuildContext context, Map<String, dynamic> userData) {
+    // Get the image URL from your existing data logic
+    String? imageUrl = userData['profilePic'] ?? userData['profileImageUrl'];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          const Text("Profile Photo", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          const SizedBox(height: 10),
+          
+          // OPTION 1: SEE PICTURE
+          ListTile(
+            leading: const Icon(Icons.fullscreen, color: Colors.blue),
+            title: const Text("View Profile Picture"),
+            onTap: () {
+              Navigator.pop(context);
+              if (imageUrl != null && imageUrl.isNotEmpty) {
+                _viewFullScreenImage(context, imageUrl);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("No profile picture set")),
+                );
+              }
+            },
+          ),
+
+          // OPTION 2: CHANGE PICTURE
+          ListTile(
+            leading: const Icon(Icons.photo_library, color: Colors.green),
+            title: const Text("Change Profile Picture"),
+            onTap: () {
+              Navigator.pop(context);
+              _updateProfilePicture(); // This calls your existing upload logic
+            },
+          ),
+          const SizedBox(height: 20),
+
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text("Remove Profile Picture", style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(context);
+              _showDeletePhotoConfirmation();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  // 1. Confirmation Dialog
+void _showDeletePhotoConfirmation() {
+  showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Remove Photo?"),
+        content: const Text("This will revert your profile picture to the default icon."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _removeProfilePicture();
+            },
+            child: const Text("Remove", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 2. The Actual Removal Logic
+  Future<void> _removeProfilePicture() async {
+  setState(() => _isUploading = true);
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // 1. DELETE THE ACTUAL FILE FROM STORAGE
+    // This goes to the 'profiles' folder and finds the file named after your UID
+    try {
+      await FirebaseStorage.instance
+          .ref()
+          .child('profiles')
+          .child('${user.uid}.jpg')
+          .delete();
+      debugPrint("File deleted from Storage successfully");
+    } catch (e) {
+      // If the file was already gone, we don't want the app to crash
+      debugPrint("Storage delete error (maybe file didn't exist): $e");
+    }
+
+    // 2. CLEAR THE LINK IN FIRESTORE
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'profilePic': "", 
+    });
+
+    // 3. CLEAR FROM AUTH
+    await user.updatePhotoURL(null);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Profile picture deleted forever")),
+    );
+  } catch (e) {
+    debugPrint("Final error: $e");
+  } finally {
+    if (mounted) setState(() => _isUploading = false);
+  }
+}
+  void _viewFullScreenImage(BuildContext context, String url) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(backgroundColor: Colors.black, iconTheme: const IconThemeData(color: Colors.white)),
+          body: Center(
+            child: Hero(
+              tag: 'profile_pic',
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+
+
+// ... inside your _ProfileScreenState class ...
+
+Future<void> _updateProfilePicture() async {
+  final ImagePicker picker = ImagePicker();
+
+  // 1. Pick the image
+  final XFile? image = await picker.pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 512,
+    imageQuality: 75,
+  );
+
+  // EXIT EARLY if the user cancels
+  if (image == null) return;
+
+  try {
+    // 2. SAFARI PERMISSION FIX: Read bytes IMMEDIATELY
+    // We do this before any 'await' or 'setState' to ensure Safari 
+    // doesn't revoke the gallery access permission.
+    final Uint8List bytes = await image.readAsBytes();
+    final String base64Image = base64Encode(bytes);
+
+    // Now that we have the data, we can show the loading spinner
+    setState(() => _isUploading = true);
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception("User not logged in");
+
+    // 3. Define the Storage Reference
+    // Ensure this path 'profiles' matches your Firebase Storage Rules!
+    Reference storageRef = FirebaseStorage.instance
+        .ref()
+        .child('profiles')
+        .child('${user.uid}.jpg');
+
+    // 4. Upload using the Base64 String method
+    // This is the most stable way for Safari on Vercel
+    UploadTask uploadTask = storageRef.putString(
+      base64Image,
+      format: PutStringFormat.base64,
+      metadata: SettableMetadata(contentType: 'image/jpeg'),
+    );
+
+    // 5. Wait for upload to complete and get the URL
+    TaskSnapshot snapshot = await uploadTask;
+    String downloadUrl = await snapshot.ref.getDownloadURL();
+
+    // 6. Update Firestore (Your source of truth)
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .update({'profilePic': downloadUrl});
+
+    // 7. Update Firebase Auth Profile
+    await user.updatePhotoURL(downloadUrl);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Profile updated successfully!"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  } catch (e) {
+    // This will catch Gallery Permission errors or Firebase CORS errors
+    debugPrint("Detailed Upload Error: $e");
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Upload Failed: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _isUploading = false);
+  }
+}
+}
+
+// --- SHARED EMPTY STATE WIDGET ---
+class EmptyStateWidget extends StatelessWidget {
+  final String message;
+  const EmptyStateWidget({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.restaurant_outlined, size: 80, color: Colors.grey[300]),
+            const SizedBox(height: 20),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey, fontSize: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- THE THREE TABS ---
+
+
+class PostsTab extends StatelessWidget {
+  final String viewingUid;
+  const PostsTab({super.key, required this.viewingUid});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('posts')
+          .where('userId', isEqualTo: viewingUid)
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const EmptyStateWidget(message: "No posts yet!");
+        }
+
+        final posts = snapshot.data!.docs;
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(10),
+          itemCount: posts.length,
+          itemBuilder: (context, index) {
+            var data = posts[index].data() as Map<String, dynamic>;
+            if (data['createdAt'] == null) return const SizedBox.shrink();
+            
+            // --- LOGIC: Identify the Source of Truth ---
+            // If this is a repost, we point to the original post for stats (likes/comments)
+            String sourceId = (data['isRepost'] == true && data['originalPostId'] != null)
+                ? data['originalPostId']
+                : posts[index].id;
+
+            // --- USE THE NEW NAME HERE ---
+            if (data['postType'] == 'official_recipe' && data['isRepost'] != true) {
+              return RecipeCardPost(data: data, postId: posts[index].id);
+            }
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. REPOST HINT
+                  if (data['isRepost'] == true)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 16, top: 12, bottom: 0),
+                      child: Row(
+                        children: [
+                          Icon(Icons.repeat, size: 14, color: Colors.green),
+                          SizedBox(width: 4),
+                          Text("Reposted", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+
+                  // 2. HEADER
+                  ListTile(
+                    // Inside PostsTab -> ListView.builder -> ListTile
+                  leading: FutureBuilder<DocumentSnapshot>(
+                      future: () async {
+                        // 1. If this is a REPOST, we need to find the Original Author's ID
+                        if (data['isRepost'] == true && data['originalPostId'] != null) {
+                          DocumentSnapshot originalPost = await FirebaseFirestore.instance
+                              .collection('posts')
+                              .doc(data['originalPostId'])
+                              .get();
+                          
+                          if (originalPost.exists) {
+                            String originalAuthorId = originalPost.get('userId');
+                            // Fetch the Original Author's live profile
+                            return FirebaseFirestore.instance.collection('users').doc(originalAuthorId).get();
+                          }
+                        }
+                        // 2. If it's an ORIGINAL post, just fetch the creator's live profile
+                        return FirebaseFirestore.instance.collection('users').doc(data['userId']).get();
+                      }(),
+                      builder: (context, userSnap) {
+                        String? liveProfilePic;
+                        
+                        // We cast to DocumentSnapshot to access the data
+                        if (userSnap.hasData && userSnap.data is DocumentSnapshot) {
+                          var userData = (userSnap.data as DocumentSnapshot).data() as Map<String, dynamic>?;
+                          if (userData != null) {
+                            liveProfilePic = userData['profilePic'] ?? userData['profileImageUrl'];
+                          }
+                        }
+
+                        bool hasImage = liveProfilePic != null && liveProfilePic.trim().isNotEmpty;
+
+                        return CircleAvatar(
+                          radius: 20,
+                          backgroundColor: Colors.green,
+                          backgroundImage: hasImage ? NetworkImage(liveProfilePic!) : null,
+                          child: !hasImage 
+                              ? const Icon(Icons.person, color: Colors.white) 
+                              : null,
+                        );
+                      },
+                    ),
+                    title: Text(
+                      (data['isRepost'] == true) ? (data['originalAuthor'] ?? "Chef") : (data['username'] ?? "Chef"), 
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(_formatTimestamp(data['createdAt']), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'delete') _showPostDeleteConfirmation(context, posts[index].id);
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: 'share', child: Text("Share")),
+                        if (viewingUid == FirebaseAuth.instance.currentUser?.uid)
+                          const PopupMenuItem(value: 'delete', child: Text("Delete", style: TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  ),
+                  // --- NEW MEDIA DISPLAY LOGIC ---
+
+                  
+                    if (data['mediaUrl'] != null && data['mediaUrl'].toString().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 15.0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: data['mediaType'] == 'video'
+                              ? VideoPlayerWidget(videoUrl: data['mediaUrl']) 
+                              : Image.network(
+                                  data['mediaUrl'],
+                                  width: double.infinity,
+                                  height: 250,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                      ),
+                  // 3. CAPTION
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 8.0),
+                    child: ExpandableCaption(text: data['caption'] ?? ""),
+                  ),
+
+                  // 4. SYNCED SOCIAL BAR
+                  StreamBuilder<DocumentSnapshot>(
+                    stream: FirebaseFirestore.instance.collection('posts').doc(sourceId).snapshots(),
+                    builder: (context, statsSnapshot) {
+                      // Fallback to local data if original is deleted or loading
+                      var stats = statsSnapshot.hasData && statsSnapshot.data!.exists
+                          ? statsSnapshot.data!.data() as Map<String, dynamic>
+                          : data;
+
+                      List likes = stats['likes'] ?? [];
+                      int commentCount = stats['commentCount'] ?? 0;
+                      int reposts = stats['reposts'] ?? 0;
+                      bool isLiked = likes.contains(FirebaseAuth.instance.currentUser?.uid);
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 5.0),
+                        child: Column(
+                          children: [
+                            const Divider(height: 1),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                // LIKE
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? Colors.red : Colors.grey),
+                                      onPressed: () => _toggleLike(sourceId, likes),
+                                    ),
+                                    Text("${likes.length}", style: const TextStyle(color: Colors.grey)),
+                                  ],
+                                ),
+                                // COMMENT
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.chat_bubble_outline),
+                                      onPressed: () => _showCommentsBottomSheet(context, sourceId),
+                                    ),
+                                    Text("$commentCount", style: const TextStyle(color: Colors.grey)),
+                                  ],
+                                ),
+                                // REPOST
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.repeat),
+                                      onPressed: () => _handleRepost(context, stats, sourceId),
+                                    ),
+                                    Text("$reposts", style: const TextStyle(color: Colors.grey)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+
+Future<void> _handleRepost(BuildContext context, Map<String, dynamic> data, String originalPostId) async {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      try {
+        // 1. DUPLICATE CHECK: Look for an existing repost by this user for this specific post
+        final existingRepost = await FirebaseFirestore.instance
+            .collection('posts')
+            .where('userId', isEqualTo: currentUser.uid)
+            .where('originalPostId', isEqualTo: originalPostId)
+            .limit(1)
+            .get();
+
+        if (existingRepost.docs.isNotEmpty) {
+          // Show a message and stop the function
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("You've already reposted this recipe!"),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return; 
+        }
+
+        // 2. Create Repost Pointer (Only runs if no duplicate was found)
+        await FirebaseFirestore.instance.collection('posts').add({
+          'userId': currentUser.uid,
+          'username': currentUser.displayName ?? "Chef",
+          'caption': data['caption'],
+          'mediaUrl': data['mediaUrl'] ?? "", // Add this!
+          'mediaType': data['mediaType'] ?? "text", // Add this!
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRepost': true,
+          'originalAuthor': (data['isRepost'] == true) ? data['originalAuthor'] : data['username'],
+          'originalPostId': originalPostId,
+        });
+
+        // 3. Increment Original Repost Count
+        await FirebaseFirestore.instance.collection('posts').doc(originalPostId).update({
+          'reposts': FieldValue.increment(1),
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Recipe shared to your profile!")),
+        );
+      } catch (e) {
+        print("Repost Error: $e");
+      }
+    }
+  // Logic to delete the entire post document
+Future<void> _deletePost(String postId) async {
+      await FirebaseFirestore.instance.collection('posts').doc(postId).delete();
+    }
+
+    // Logic to show the Confirmation Dialog
+    void _showPostDeleteConfirmation(BuildContext context, String postId) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Delete Post?"),
+          content: const Text("This will permanently remove your recipe/tip. Are you sure?"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            TextButton(
+              onPressed: () {
+                _deletePost(postId);
+                Navigator.pop(context);
+              },
+              child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      );
+    }
+  // Added String? parentId as an optional variable
+    Future<void> _addComment(String postId, String text, {String? parentId}) async {
+  if (text.trim().isEmpty) return;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+  
+  await FirebaseFirestore.instance.collection('posts').doc(postId).collection('comments').add({
+    'text': text,
+    'userId': user.uid,
+    'username': userDoc.data()?['username'] ?? "Chef",
+    'createdAt': FieldValue.serverTimestamp(),
+    'parentId': parentId, 
+    // userProfile is removed so it never gets "stale"
+  });
+
+  await FirebaseFirestore.instance.collection('posts').doc(postId).update({
+    'commentCount': FieldValue.increment(1),
+  });
+}
+  Future<void> _toggleLike(String postId, List likes) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    DocumentReference postRef = FirebaseFirestore.instance.collection('posts').doc(postId);
+    if (likes.contains(uid)) {
+      await postRef.update({'likes': FieldValue.arrayRemove([uid])});
+    } else {
+      await postRef.update({'likes': FieldValue.arrayUnion([uid])});
+    }
+  }
+
+ Future<void> _deleteComment(String postId, String commentId, int repliesCount, List<QueryDocumentSnapshot> allDocs) async {
+  try {
+    final batch = FirebaseFirestore.instance.batch();
+    
+    // 1. Ref for the main comment
+    DocumentReference commentRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(postId)
+        .collection('comments')
+        .doc(commentId);
+
+    // 2. Ref for the main post
+    DocumentReference postRef = FirebaseFirestore.instance.collection('posts').doc(postId);
+
+    // 3. Add parent comment deletion to batch
+    batch.delete(commentRef);
+
+    // 4. Add all linked replies to the deletion batch
+    var repliesToDelete = allDocs.where((doc) => (doc.data() as Map)['parentId'] == commentId);
+    for (var reply in repliesToDelete) {
+      batch.delete(reply.reference);
+    }
+
+    // 5. MATH FIX: Total to subtract = 1 (parent) + X (replies)
+    int totalToSubtract = 1 + repliesCount;
+    
+    batch.update(postRef, {
+      'commentCount': FieldValue.increment(-totalToSubtract),
+    });
+
+    // Execute all at once
+    await batch.commit();
+    
+  } catch (e) {
+    debugPrint("Delete error: $e");
+  }
+}
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return "Just now";
+    
+    // Convert Firestore Timestamp to Dart DateTime
+    DateTime date = (timestamp as Timestamp).toDate();
+    
+    // A simple way to format: "29 Jan 2026, 20:45"
+    // You can customize this string however you like!
+    return "${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+  }
+
+
+// Add 'allDocs' to the parameters
+void _showDeleteDialog(BuildContext context, String postId, String commentId, List<QueryDocumentSnapshot> allDocs) {
+  // Count how many replies are linked to this specific commentId
+  int repliesCount = allDocs.where((doc) => (doc.data() as Map)['parentId'] == commentId).length;
+
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Delete Comment?", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      content: Text(repliesCount > 0 
+          ? "This will also delete $repliesCount replies. Are you sure?" 
+          : "Do you want to remove this comment permanently?"),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+        TextButton(
+          onPressed: () {
+            // Pass the repliesCount and the full list to the delete function
+            _deleteComment(postId, commentId, repliesCount, allDocs);
+            Navigator.pop(context); 
+          },
+          child: const Text("Delete", style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  );
+}
+  void _showCommentsBottomSheet(BuildContext context, String postId) {
+  String? selectedCommentId;
+  final TextEditingController _commentController = TextEditingController();
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (context) => StatefulBuilder( // Added to ensure 'selectedCommentId' updates UI
+      builder: (context, setSheetState) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.6,
+          child: Column(
+            children: [
+              const Icon(Icons.drag_handle, color: Colors.grey),
+              const Text("Comments", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              const Divider(),
+
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('posts')
+                      .doc(postId)
+                      .collection('comments')
+                      .orderBy('createdAt', descending: true) 
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+                    // 1. Get all raw docs
+                    final allDocs = snapshot.data!.docs;
+
+                    // 2. Separate Parents and Replies
+                    final parents = allDocs.where((doc) => (doc.data() as Map)['parentId'] == null).toList();
+                    final replies = allDocs.where((doc) => (doc.data() as Map)['parentId'] != null).toList();
+
+                    // 3. Create a combined list where replies follow their parents
+                    List<DocumentSnapshot> displayList = [];
+                    for (var parent in parents) {
+                      displayList.add(parent); // Add the parent (Newest first)
+                      
+                      // Find replies for this parent
+                      var thread = replies.where((r) => r['parentId'] == parent.id).toList();
+                      
+                      // Sort thread OLD to NEW (Downward flow)
+                      thread.sort((a, b) {
+                        Timestamp t1 = a['createdAt'] ?? Timestamp.now();
+                        Timestamp t2 = b['createdAt'] ?? Timestamp.now();
+                        return t1.compareTo(t2); 
+                      });
+                      
+                      displayList.addAll(thread); // Add sorted replies right under parent
+                    }
+
+                    return ListView.builder(
+                      itemCount: displayList.length,
+                      itemBuilder: (context, index) {
+                        var cData = displayList[index].data() as Map<String, dynamic>;
+                        String commentId = displayList[index].id;
+                        String currentUid = FirebaseAuth.instance.currentUser?.uid ?? "";
+                        bool isReply = cData['parentId'] != null;
+
+                        return Padding(
+                          padding: EdgeInsets.only(left: isReply ? 40.0 : 0.0),
+                          child: ListTile(
+                          leading: FutureBuilder<DocumentSnapshot>(
+                            // We use the userId from the comment to find their CURRENT profile in the users collection
+                            future: FirebaseFirestore.instance.collection('users').doc(cData['userId']).get(),
+                            builder: (context, userSnap) {
+                              String? liveProfilePic;
+                              
+                              if (userSnap.hasData && userSnap.data!.exists) {
+                                var userData = userSnap.data!.data() as Map<String, dynamic>;
+                                // This fetches the actual CURRENT picture from the user's document
+                                liveProfilePic = userData['profilePic'] ?? userData['profileImageUrl'];
+                              }
+
+                              // STRICT LOGIC: Only show image if it's NOT null AND NOT an empty string
+                              bool hasImage = liveProfilePic != null && liveProfilePic.trim().isNotEmpty;
+
+                              return CircleAvatar(
+                                radius: isReply ? 12 : 16,
+                                backgroundColor: Colors.green[100],
+                                backgroundImage: hasImage ? NetworkImage(liveProfilePic!) : null,
+                                child: !hasImage 
+                                    ? Icon(Icons.person, size: isReply ? 12 : 16, color: Colors.green) 
+                                    : null,
+                              );
+                            },
+                          ),
+                            title: Row(
+                              children: [
+                                Text(cData['username'] ?? "Chef", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                const SizedBox(width: 8),
+                                Text(_formatTimestamp(cData['createdAt']), style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                              ],
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(cData['text'] ?? "", style: const TextStyle(color: Colors.black87)),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // REMOVED "if (!isReply)" so the button shows for everyone
+                                TextButton(
+                                  onPressed: () {
+                                    setSheetState(() {
+                                      _commentController.text = "@${cData['username']} ";
+                                      
+                                      // LOGIC: If replying to a reply, use the existing parentId. 
+                                      // If replying to a parent, use the parent's own ID.
+                                      selectedCommentId = isReply ? cData['parentId'] : commentId;
+                                    });
+                                  },
+                                  child: const Text("Reply", style: TextStyle(color: Colors.green, fontSize: 12)),
+                                ),
+                                // Inside itemBuilder for the comments
+                              if (cData['userId'] == currentUid)
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                                  // Pass 'allDocs' which is already available from your StreamBuilder
+                                  onPressed: () => _showDeleteDialog(context, postId, commentId, allDocs), 
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+
+              // INPUT FIELD
+              Padding(
+                padding: const EdgeInsets.all(10.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _commentController,
+                        decoration: InputDecoration(
+                          hintText: selectedCommentId != null ? "Replying..." : "Add a comment...",
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 15),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.send, color: Colors.green),
+                      onPressed: () {
+                        if (_commentController.text.trim().isEmpty) return;
+                        _addComment(postId, _commentController.text, parentId: selectedCommentId);
+                        _commentController.clear();
+                        setSheetState(() {
+                          selectedCommentId = null;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+}
+
+
+class ExpandableCaption extends StatefulWidget {
+  final String text;
+  const ExpandableCaption({super.key, required this.text});
+
+  @override
+  State<ExpandableCaption> createState() => _ExpandableCaptionState();
+}
+
+class _ExpandableCaptionState extends State<ExpandableCaption> {
+  bool isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Only show "Read more" if text is longer than 120 characters
+    final bool canExpand = widget.text.length > 120;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.text,
+          maxLines: isExpanded ? null : 3,
+          overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 14, 
+            height: 1.5, 
+            color: Colors.black87
+          ),
+        ),
+        if (canExpand)
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                isExpanded = !isExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6.0),
+              child: Text(
+                isExpanded ? "Show less" : "Read more...",
+                style: const TextStyle(
+                  color: Colors.green, 
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+class RecipesTab extends StatelessWidget {
+  const RecipesTab({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const EmptyStateWidget(message: "You haven't added any recipes yet");
+  }
+}
+
+class FavoritesTab extends StatelessWidget {
+  const FavoritesTab({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const EmptyStateWidget(message: "No saved recipes found");
+  }
+}
+
+// --- CREATE MENU LOGIC ---
+void _showCreateMenu(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (context) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text("Create Content", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.edit, color: Colors.white)),
+            title: const Text("Create a Quick Post"),
+            subtitle: const Text("Share a cooking tip or update"),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CreateQuickPostScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.restaurant_menu, color: Colors.white)),
+            title: const Text("Upload Official Recipe"),
+            subtitle: const Text("Add steps, ingredients, and set Star price"),
+            onTap: () {
+              Navigator.pop(context); // Close the sheet
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CreateRecipeScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// --- TAB 1: POSTS (Social Feed Style) ---
+
+
+
+
+class ExpandedPostScreen extends StatelessWidget {
+  // I changed this BACK to 'data' so it matches your RecipeCardPost!
+  final Map<String, dynamic> data; 
+  final String postId;
+  final TextEditingController _commentController = TextEditingController();
+
+  ExpandedPostScreen({super.key, required this.data, required this.postId});
+
+  // --- 1. REPOST LOGIC ---
+  // This function now accepts 'currentData' to ensure we copy the LIVE details
+  Future<void> _handleRepost(BuildContext context, Map<String, dynamic> currentData) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      String myName = userDoc.data()?['username'] ?? "zulkifli";
+
+      final existing = await FirebaseFirestore.instance
+          .collection('posts')
+          .where('userId', isEqualTo: user.uid)
+          .where('originalPostId', isEqualTo: postId)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Already shared!")));
+        return;
+      }
+
+      // EXPLICITLY COPY LISTS
+      List<String> ingredients = List<String>.from(currentData['ingredients'] ?? []);
+      List<String> instructions = List<String>.from(currentData['instructions'] ?? []);
+
+      await FirebaseFirestore.instance.collection('posts').add({
+        'title': currentData['title'] ?? "Untitled",
+        'caption': currentData['caption'] ?? "",
+        'ingredients': ingredients,
+        'instructions': instructions,
+        'mediaUrl': currentData['mediaUrl'] ?? "",
+        'mediaType': currentData['mediaType'] ?? "image",
+        'postType': currentData['postType'] ?? "official_recipe",
+        'userId': user.uid,
+        'username': myName,
+        'isRepost': true,
+        'originalAuthor': currentData['username'] ?? "Chef",
+        'originalPostId': postId,
+        'createdAt': FieldValue.serverTimestamp(),
+        'likes': [],
+        'reposts': 0,
+        'commentCount': 0,
+        'triedCount': 0,
+        'successRate': 0,
+      });
+
+      await FirebaseFirestore.instance.collection('posts').doc(postId).update({
+        'reposts': FieldValue.increment(1),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Shared as $myName!")));
+    } catch (e) {
+      debugPrint("Repost Error: $e");
+    }
+  }
+
+  // --- 2. RECIPE OVERVIEW ---
+  void _showRecipeOverview(BuildContext context, Map<String, dynamic> recipeData) {
+    List ingredients = recipeData['ingredients'] ?? [];
+    List steps = recipeData['instructions'] ?? [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85,
+        builder: (context, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(25),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+              const SizedBox(height: 20),
+              const Text("Recipe Overview", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+              Text(recipeData['title'] ?? "", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 18)),
+              const Divider(height: 40),
+              const Text("Ingredients", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              if (ingredients.isEmpty) const Text("No ingredients listed.", style: TextStyle(color: Colors.grey)),
+              ...ingredients.map((item) => Text("• $item", style: const TextStyle(fontSize: 16))).toList(),
+              const SizedBox(height: 30),
+              const Text("Instructions", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              if (steps.isEmpty) const Text("No instructions listed.", style: TextStyle(color: Colors.grey)),
+              ...steps.map((step) => Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text("${steps.indexOf(step) + 1}. $step", style: const TextStyle(color: Colors.black54, fontSize: 15)),
+              )).toList(),
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    FirebaseFirestore.instance.collection('posts').doc(postId).update({'triedCount': FieldValue.increment(1)});
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(vertical: 18)),
+                  child: const Text("START COOKING NOW", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- 3. LIKE & COMMENT HELPERS ---
+  Future<void> _toggleLike() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    DocumentReference postRef = FirebaseFirestore.instance.collection('posts').doc(postId);
+    DocumentSnapshot snap = await postRef.get();
+    List likes = snap.get('likes') ?? [];
+    if (likes.contains(uid)) {
+      await postRef.update({'likes': FieldValue.arrayRemove([uid])});
+    } else {
+      await postRef.update({'likes': FieldValue.arrayUnion([uid])});
+    }
+  }
+
+  Future<void> _submitComment(String text) async {
+    if (text.trim().isEmpty) return;
+    final user = FirebaseAuth.instance.currentUser;
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+      String myName = userDoc.data()?['username'] ?? "Chef";
+      await FirebaseFirestore.instance.collection('posts').doc(postId).collection('comments').add({
+        'text': text, 'userId': user.uid, 'username': myName, 'createdAt': FieldValue.serverTimestamp(), 'parentId': "",
+      });
+      await FirebaseFirestore.instance.collection('posts').doc(postId).update({'commentCount': FieldValue.increment(1)});
+      _commentController.clear();
+    } catch (e) { debugPrint("Error: $e"); }
+  }
+
+  // --- 4. STAR SUPPORT DIALOG ---
+  void _showTipDialog(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) => StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('users').doc(user!.uid).snapshots(),
+        builder: (context, userSnap) {
+          int balance = userSnap.data?['stars'] ?? 0;
+          return Padding(
+            padding: const EdgeInsets.all(25),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text("Support with Stars", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Row(children: [const Icon(Icons.stars, color: Colors.orange), Text(" $balance")]),
+              ]),
+              const SizedBox(height: 20),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [5, 10, 20].map((amt) => ElevatedButton(
+                onPressed: balance >= amt ? () => _sendStars(context, amt) : null,
+                child: Text("⭐ $amt"),
+              )).toList()),
+              const SizedBox(height: 20),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _sendStars(BuildContext context, int amount) async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    await FirebaseFirestore.instance.collection('users').doc(uid).update({'stars': FieldValue.increment(-amount)});
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sent $amount stars!")));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('posts').doc(postId).snapshots(),
+      builder: (context, postSnap) {
+        if (!postSnap.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+        var liveData = postSnap.data!.data() as Map<String, dynamic>;
+        List likes = liveData['likes'] ?? [];
+        bool isLiked = likes.contains(FirebaseAuth.instance.currentUser?.uid);
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text("${liveData['username'] ?? 'Chef'}'s Post"),
+            backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0.5,
+          ),
+          body: SingleChildScrollView(
+            child: Column(children: [
+              Container(height: 350, width: double.infinity, color: Colors.black,
+                child: liveData['mediaType'] == 'video'
+                    ? const Center(child: Icon(Icons.play_circle_fill, size: 80, color: Colors.white70))
+                    : Image.network(liveData['mediaUrl'], fit: BoxFit.cover),
+              ),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), color: Colors.green[50],
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text("👥 ${liveData['triedCount'] ?? 0} tried this", style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold)),
+                  Text("✅ ${liveData['successRate'] ?? 0}% Success Rate", style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold)),
+                ]),
+              ),
+              Padding(padding: const EdgeInsets.all(20.0), child: Column(children: [
+                Text(liveData['title'] ?? "Untitled", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                if (liveData['isRepost'] == true)
+                  Text("Shared from ${liveData['originalAuthor']}", style: const TextStyle(color: Colors.green, fontSize: 14)),
+                const SizedBox(height: 10),
+                Text(liveData['caption'] ?? "", textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, height: 1.5)),
+                const SizedBox(height: 20),
+                Row(children: [
+                  IconButton(onPressed: _toggleLike, icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? Colors.red : Colors.grey)),
+                  Text("${likes.length}"),
+                  const SizedBox(width: 20),
+                  IconButton(
+                    icon: const Icon(Icons.repeat, color: Colors.grey),
+                    onPressed: () => _handleRepost(context, liveData), // Passing liveData fixes empty reposts!
+                  ),
+                  Text("${liveData['reposts'] ?? 0}"),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => _showTipDialog(context),
+                    icon: const Icon(Icons.stars, color: Colors.orange),
+                    label: const Text("SUPPORT", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              ])),
+              const Divider(),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                onPressed: () => _showRecipeOverview(context, liveData), // Passing liveData fixes View button!
+                icon: const Icon(Icons.restaurant_menu),
+                label: const Text("VIEW FULL RECIPE & COOK"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
+              ))),
+              // Comments Section (Simplified for brevity, keep your ListBuilder)
+              Padding(padding: const EdgeInsets.all(16.0), child: TextField(
+                controller: _commentController,
+                decoration: InputDecoration(hintText: "Add a comment...", suffixIcon: IconButton(icon: const Icon(Icons.send, color: Colors.green), onPressed: () => _submitComment(_commentController.text)), border: OutlineInputBorder(borderRadius: BorderRadius.circular(30))),
+              )),
+              const SizedBox(height: 50),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}
+class PostDetailScreen extends StatelessWidget {
+  const PostDetailScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Chef's Post"), foregroundColor: Colors.black, backgroundColor: Colors.white),
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Post Media
+            Container(height: 300, color: Colors.black, child: const Center(child: Icon(Icons.play_circle_fill, size: 80, color: Colors.green))),
+            
+            // 2. Trust Metrics (Tried & Success Rate)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              color: Colors.green[50],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("👥 23 people tried this", style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold)),
+                  Text("✅ 80% Success Rate", style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+
+            // 3. Caption & Action Bar
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Authentic Sambal Udang Petai", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "This is my grandmother's secret recipe. The trick is in the slow-cooked chili and ensuring the 'pecah minyak' stage is perfect. Don't rush the onions! If you want it extra spicy, add some bird's eye chili at the end.",
+                    style: TextStyle(fontSize: 16, height: 1.5),
+                  ),
+                  const SizedBox(height: 15),
+                  Row(
+                    children: [
+                      const Icon(Icons.favorite, color: Colors.red),
+                      const SizedBox(width: 5),
+                      const Text("1.2k Likes", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      ElevatedButton(
+                        onPressed: () => "_showRecipeOverview(context)", // Defined in previous step
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        child: const Text("View Recipe"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+
+            // 4. Comment Section with Replies
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Text("Comments", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            _buildCommentWithReply("Chef Siti", "The petai looks so fresh! Definitely trying this.", "2", true),
+            _buildCommentWithReply("Ali Abu", "Can I use squid instead of prawns?", "5", false),
+            _buildCommentWithReply("Santhi", "My family loved this! 80% success is real.", "12", true),
+            _buildCommentWithReply("Wei Kang", "I tried it, but my sambal turned out too dark. Why?", "1", false),
+            
+            // 5. Write a Comment Box
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: "Add a comment...",
+                  suffixIcon: const Icon(Icons.send, color: Colors.green),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 50),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget for a single comment and its reply
+  Widget _buildCommentWithReply(String name, String text, String likes, bool hasReply) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(radius: 15, child: Text(name[0])),
+              const SizedBox(width: 10),
+              Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 40, top: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(text),
+                Row(
+                  children: [
+                    TextButton(onPressed: () {}, child: Text("Like ($likes)", style: const TextStyle(fontSize: 12))),
+                    TextButton(onPressed: () {}, child: const Text("Reply", style: TextStyle(fontSize: 12))),
+                  ],
+                ),
+                if (hasReply)
+                  Container(
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(left: 12), // Move border into decoration
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        left: BorderSide(color: Colors.grey, width: 2), // This creates that "thread" line
+                      ),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Chef Ahmad (Reply)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green)),
+                        Text("Try washing the chili paste first to remove excess bitterness!", style: TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  
+}
+
+//Dummy profile
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        // NestedScrollView is the key to making the Tabs stick to the top
+        body: NestedScrollView(
+          headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+            return [
+              SliverAppBar(
+                expandedHeight: 340, // Height of your Header area
+                pinned: true,        // THIS makes the TabBar stay at the top
+                backgroundColor: Colors.white,
+                elevation: 0,
+                title: const Text("Chef Ahmad", style: TextStyle(color: Colors.black)),
+                iconTheme: const IconThemeData(color: Colors.black),
+                
+                // This part disappears as you scroll
+                flexibleSpace: FlexibleSpaceBar(
+                  collapseMode: CollapseMode.pin,
+                  background: Padding(
+                    padding: const EdgeInsets.only(top: 80), 
+                    child: _buildProfileHeader(),
+                  ),
+                ),
+
+                // This part (the Tabs) stays stuck at the top
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(48),
+                  child: Container(
+                    color: Colors.white,
+                    child: const TabBar(
+                      labelColor: Colors.green,
+                      unselectedLabelColor: Colors.grey,
+                      indicatorColor: Colors.green,
+                      tabs: [
+                        Tab(text: "Posts"),
+                        Tab(text: "Recipes"),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ];
+          },
+          // This is the scrollable area below the Tabs
+          body: TabBarView(
+            children: [
+              // TAB 1: POSTS
+              ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: 5,
+                itemBuilder: (context, index) => const RecipeCard(),
+              ),
+              
+              // TAB 2: RECIPES
+              ListView.builder(
+                padding: const EdgeInsets.all(10),
+                itemCount: 3,
+                itemBuilder: (context, index) => _buildRecipeItem(index),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Your original Header logic
+  Widget _buildProfileHeader() {
+    return Column(
+      children: [
+        const CircleAvatar(radius: 40, backgroundColor: Colors.green, child: Icon(Icons.person, size: 40, color: Colors.white)),
+        const SizedBox(height: 10),
+        const Text("Chef Ahmad", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const Text("Spreading the love for Sambal! 🌶️", style: TextStyle(color: Colors.grey)),
+        const SizedBox(height: 15),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _profileStat("Following", "142"),
+            _profileStat("Followers", "12.5k"),
+            _profileStat("Success", "88%"),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _followButton(),
+      ],
+    );
+  }
+
+  Widget _followButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 30),
+      child: SizedBox(
+        width: double.infinity,
+        height: 40,
+        child: ElevatedButton(
+          onPressed: () {},
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+          child: const Text("Follow", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  Widget _profileStat(String label, String value) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _buildRecipeItem(int index) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      shape: RoundedRectangleBorder(side: BorderSide(color: Colors.grey[200]!), borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        leading: const Icon(Icons.menu_book, color: Colors.green),
+        title: Text("Official Recipe ${index + 1}"),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+      ),
+    );
+  }
+}
+
+
+
+// --------------------------------------------------------------------------
+// 1. THE INBOX SCREEN (The List of People)
+// --------------------------------------------------------------------------
+class InboxScreen extends StatelessWidget {
+  const InboxScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Inbox", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+      ),
+      body: ListView(
+        children: [
+          // Row 1: Notification Center
+          _buildNotificationCenterTile(context),
+          
+          const Divider(thickness: 1, height: 1),
+          
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
+            child: Text("Messages", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ),
+
+          // Message Tiles - Linking to your ChatScreen
+          _buildMessageTile(context, "Chef Ahmad", "Bro, that Sambal Udang looks fire!", "2m ago", true),
+          _buildMessageTile(context, "Siti_Cooks", "I just sent you 50 Stars!", "1h ago", false),
+          _buildMessageTile(context, "KitchenKing", "Can I swap prawns for squid?", "Yesterday", false),
+        ],
+      ),
+    );
+  }
+
+  // 1. Add context here so the function can "see" the navigator
+    Widget _buildNotificationCenterTile(BuildContext context) { 
+      return ListTile(
+        leading: const CircleAvatar(
+          backgroundColor: Colors.orange, 
+          child: Icon(Icons.notifications, color: Colors.white)
+        ),
+        title: const Text("Notification Center", style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text("Likes and success alerts"),
+        trailing: const Badge(
+          label: Text("5"), 
+          child: Icon(Icons.arrow_forward_ios, size: 14)
+        ),
+        onTap: () {
+          // 2. Use the context we just passed in to navigate
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const NotificationCenterScreen()),
+          );
+        },
+      );
+    }
+
+  Widget _buildMessageTile(BuildContext context, String name, String msg, String time, bool unread) {
+    return ListTile(
+      leading: CircleAvatar(backgroundColor: Colors.green[100], child: Text(name[0])),
+      title: Text(name, style: TextStyle(fontWeight: unread ? FontWeight.bold : FontWeight.normal)),
+      subtitle: Text(msg, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: Text(time, style: const TextStyle(fontSize: 12)),
+      onTap: () {
+        // THIS OPENS YOUR CHAT SCREEN
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ChatScreen(username: name)),
+        );
+      },
+    );
+  }
+}
+
+// --------------------------------------------------------------------------
+// 2. YOUR CHAT SCREEN (The Reply Logic)
+// --------------------------------------------------------------------------
+class ChatScreen extends StatefulWidget {
+  final String username;
+  const ChatScreen({super.key, required this.username});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _messageController = TextEditingController();
+  
+  final List<Map<String, dynamic>> _messages = [
+    {"text": "Bro, that Sambal Udang looks fire! What's the secret?", "isMe": false},
+    {"text": "Thanks Ahmad! The secret is the slow-toasted belacan.", "isMe": true},
+    {"text": "I tried it but mine was too salty. Any tips?", "isMe": false},
+  ];
+
+  void _sendMessage() {
+    if (_messageController.text.isNotEmpty) {
+      setState(() {
+        _messages.add({"text": _messageController.text, "isMe": true});
+        _messageController.clear();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.username),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0.5,
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _messages.length,
+              itemBuilder: (context, index) {
+                final msg = _messages[index];
+                return _buildMessageBubble(msg["text"], msg["isMe"]);
+              },
+            ),
+          ),
+          _buildInputBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(String text, bool isMe) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.green : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20).copyWith(
+            bottomRight: isMe ? const Radius.circular(0) : const Radius.circular(20),
+            bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(0),
+          ),
+        ),
+        child: Text(text, style: TextStyle(color: isMe ? Colors.white : Colors.black87)),
+      ),
+    );
+  }
+
+  Widget _buildInputBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Colors.grey[200]!))),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: InputDecoration(
+                hintText: "Reply to chat...",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                filled: true,
+                fillColor: Colors.grey[100],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          IconButton(icon: const Icon(Icons.send, color: Colors.green), onPressed: _sendMessage),
+        ],
+      ),
+    );
+  }
+}
+
+class NotificationCenterScreen extends StatelessWidget {
+  const NotificationCenterScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Notifications", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0.5,
+          bottom: const TabBar(
+            indicatorColor: Colors.green,
+            labelColor: Colors.green,
+            unselectedLabelColor: Colors.grey,
+            tabs: [
+              Tab(text: "Activity"),
+              Tab(text: "Cook Success"),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            // TAB 1: GENERAL ACTIVITY
+            ListView(
+              children: [
+                _buildNotificationTile(
+                  icon: Icons.favorite,
+                  iconColor: Colors.red,
+                  title: "Chef Ahmad liked your Sambal Udang",
+                  time: "2m ago",
+                ),
+                _buildNotificationTile(
+                  icon: Icons.star,
+                  iconColor: Colors.orange,
+                  title: "Siti_Cooks sent you 50 Stars! ⭐️",
+                  time: "1h ago",
+                ),
+                _buildNotificationTile(
+                  icon: Icons.person_add,
+                  iconColor: Colors.blue,
+                  title: "KitchenKing followed you",
+                  time: "3h ago",
+                ),
+              ],
+            ),
+
+            // TAB 2: COOK SUCCESS (The "Trust" Feed)
+            ListView(
+              children: [
+                _buildSuccessTile(
+                  user: "Mama_Gee",
+                  recipe: "Sambal Udang Specialist",
+                  comment: "Perfect heat level! My family loved it.",
+                ),
+                _buildSuccessTile(
+                  user: "StudentCooker",
+                  recipe: "Sambal Udang Specialist",
+                  comment: "First time trying and it worked! 80% success indeed.",
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Helper for General Activity (Likes/Follows)
+  Widget _buildNotificationTile({required IconData icon, required Color iconColor, required String title, required String time}) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: iconColor.withOpacity(0.1),
+        child: Icon(icon, color: iconColor, size: 20),
+      ),
+      title: Text(title, style: const TextStyle(fontSize: 14)),
+      subtitle: Text(time, style: const TextStyle(fontSize: 12)),
+      onTap: () {},
+    );
+  }
+
+  // Helper for Cook Success (Specific to your HomeCook brand)
+  Widget _buildSuccessTile({required String user, required String recipe, required String comment}) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.verified, color: Colors.green, size: 30),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("$user successfully cooked your $recipe!", 
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text("\"$comment\"", style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+
+
+
+class PublicProfilePage extends StatelessWidget {
+  final String userId; // The ID of the person you searched for
+
+  const PublicProfilePage({super.key, required this.userId});
+
+  // --- THE FOLLOW LOGIC ---
+  Future<void> _toggleFollow() async {
+    final String currentUserId = FirebaseAuth.instance.currentUser!.uid;
+    
+    // References to both user documents
+    DocumentReference myRef = FirebaseFirestore.instance.collection('users').doc(currentUserId);
+    DocumentReference theirRef = FirebaseFirestore.instance.collection('users').doc(userId);
+    
+    // Reference to the specific 'following' record
+    DocumentReference followRecord = myRef.collection('following').doc(userId);
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        DocumentSnapshot followSnap = await transaction.get(followRecord);
+
+        if (!followSnap.exists) {
+          // 1. You follow them
+          transaction.set(followRecord, {'timestamp': FieldValue.serverTimestamp()});
+          // 2. Increment your 'following' count
+          transaction.update(myRef, {'following': FieldValue.increment(1)});
+          // 3. Increment their 'followers' count
+          transaction.update(theirRef, {'followers': FieldValue.increment(1)});
+        } else {
+          // 1. You unfollow them
+          transaction.delete(followRecord);
+          // 2. Decrement your 'following' count
+          transaction.update(myRef, {'following': FieldValue.increment(-1)});
+          // 3. Decrement their 'followers' count
+          transaction.update(theirRef, {'followers': FieldValue.increment(-1)});
+        }
+      });
+    } catch (e) {
+      print("Error updating follow: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            
+            var userData = snapshot.data!.data() as Map<String, dynamic>?;
+            if (userData == null) return const Center(child: Text("User data empty"));
+
+            String name = userData['username'] ?? "Cook";
+            int followers = userData['followers'] ?? 0;
+            int following = userData['following'] ?? 0;
+            int success = userData['successRecipes'] ?? 0;
+
+            return NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) {
+                return [
+                        SliverAppBar(
+                          expandedHeight: 400, // Reduced slightly as there is no wallet box here
+                          pinned: true,
+                          backgroundColor: Colors.white,
+                          title: Text(name, style: const TextStyle(color: Colors.black)),
+                          iconTheme: const IconThemeData(color: Colors.black),
+                          flexibleSpace: FlexibleSpaceBar(
+                            background: Padding(
+                              padding: const EdgeInsets.only(top: 80),
+                              child: Column(
+                                children: [
+                                  // UPDATED: Dynamic Profile Picture Logic
+                                  CircleAvatar(
+                                    radius: 40,
+                                    backgroundColor: Colors.green[100],
+                                    backgroundImage: (userData['profilePic'] != null && userData['profilePic'] != "")
+                                        ? NetworkImage(userData['profilePic'])
+                                        : (userData['profileImageUrl'] != null && userData['profileImageUrl'] != "")
+                                            ? NetworkImage(userData['profileImageUrl'])
+                                            : null,
+                                    child: (userData['profilePic'] == null || userData['profilePic'] == "") && 
+                                          (userData['profileImageUrl'] == null || userData['profileImageUrl'] == "")
+                                        ? const Icon(Icons.person, size: 40, color: Colors.green)
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  const Text("Home Cook Enthusiast 🌶️", style: TextStyle(color: Colors.grey)),
+                                  const SizedBox(height: 15),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      _profileStat("Following", following.toString()),
+                                      _profileStat("Followers", followers.toString()),
+                                      _profileStat("Success", "$success%"),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 20),
+                                  _buildFollowButton(),
+                                ],
+                              ),
+                            ),
+                          ),
+                          bottom: const PreferredSize(
+                            preferredSize: Size.fromHeight(48),
+                            child: TabBar(
+                              labelColor: Colors.green,
+                              indicatorColor: Colors.green,
+                              tabs: [Tab(text: "Posts"), Tab(text: "Recipes")],
+                            ),
+                          ),
+                        )
+                      ];
+              },
+              body: TabBarView(
+                children: [
+                  // Slot 1: User's Posts
+                  // This calls the PostsTab and filters by the person you are looking at
+                  PostsTab(viewingUid: userId), 
+
+                  // Slot 2: User's Recipes
+                  const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.restaurant_menu, color: Colors.grey, size: 40),
+                        Text("No recipes shared yet", style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // --- THE BUTTON UI ---
+  Widget _buildFollowButton() {
+  final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  
+  if (currentUserId == userId) return const SizedBox.shrink();
+
+  return StreamBuilder<DocumentSnapshot>(
+    stream: FirebaseFirestore.instance
+        .collection('users')
+        .doc(currentUserId)
+        .collection('following')
+        .doc(userId)
+        .snapshots(),
+    builder: (context, snapshot) {
+      bool isFollowing = snapshot.hasData && snapshot.data!.exists;
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 25),
+        child: Row(
+          children: [
+            // THE FOLLOW BUTTON
+            Expanded(
+              child: SizedBox(
+                height: 40,
+                child: ElevatedButton(
+                  onPressed: _toggleFollow,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isFollowing ? Colors.grey[200] : Colors.green,
+                    foregroundColor: isFollowing ? Colors.black : Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    isFollowing ? "Following" : "Follow",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ),
+
+            // THE MAIL ICON (Only shows if isFollowing is true)
+            if (isFollowing) ...[
+              const SizedBox(width: 10),
+              Container(
+                height: 40,
+                width: 40,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.mail_outline, color: Colors.black, size: 20),
+                  onPressed: () {
+                    // TODO: Navigate to Chat Screen
+                    print("Start chat with: $userId");
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
+  Widget _profileStat(String label, String value) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+      ],
+    );
+  }
+}
+
+
+// QUICK POST
+
+
+
+class CreateQuickPostScreen extends StatefulWidget {
+  const CreateQuickPostScreen({super.key});
+
+  @override
+  State<CreateQuickPostScreen> createState() => _CreateQuickPostScreenState();
+}
+
+class _CreateQuickPostScreenState extends State<CreateQuickPostScreen> {
+  final TextEditingController _captionController = TextEditingController();
+  bool _isUploading = false;
+  
+  // New variables for Media
+  XFile? _pickedFile;
+  Uint8List? _mediaBytes; 
+  String _mediaType = "text"; // default
+
+  // 1. Pick & Compress Logic
+  Future<void> _pickMedia(ImageSource source, bool isVideo) async {
+    final ImagePicker picker = ImagePicker();
+    XFile? file;
+
+    if (isVideo) {
+      file = await picker.pickVideo(source: source);
+    } else {
+      // Pick Image with built-in compression
+      file = await picker.pickImage(
+        source: source, 
+        maxWidth: 1024, // Compresses width
+        imageQuality: 80, // Compresses quality
+      );
+    }
+
+    if (file != null) {
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _pickedFile = file;
+        _mediaBytes = bytes;
+        _mediaType = isVideo ? "video" : "image";
+      });
+    }
+  }
+
+  Future<void> _uploadPost() async {
+    // Basic check: need either text or media to post
+    if (_captionController.text.isEmpty && _mediaBytes == null) return;
+    
+    setState(() => _isUploading = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      String finalName = user?.displayName ?? "Chef";
+      String downloadUrl = "";
+
+      // Fetch username if needed (Your existing logic)
+      if (finalName == "Chef" || finalName.isEmpty) {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user?.uid).get();
+        if (userDoc.exists && userDoc.data()?['username'] != null) {
+          finalName = userDoc.data()!['username'];
+        }
+      }
+
+      // 2. Upload to Storage if media exists
+      if (_mediaBytes != null) {
+        String ext = _mediaType == "video" ? ".mp4" : ".jpg";
+        String fileName = "posts/${user?.uid}_${DateTime.now().millisecondsSinceEpoch}$ext";
+        
+        final ref = FirebaseStorage.instance.ref().child(fileName);
+        
+        // Using putData for Web/Mobile safety
+        SettableMetadata metadata = SettableMetadata(contentType: _mediaType == "video" ? 'video/mp4' : 'image/jpeg');
+        await ref.putData(_mediaBytes!, metadata);
+        downloadUrl = await ref.getDownloadURL();
+      }
+
+      // 3. Save to Firestore
+      await FirebaseFirestore.instance.collection('posts').add({
+        'userId': user?.uid,
+        'username': finalName,
+        'caption': _captionController.text,
+        'mediaUrl': downloadUrl, 
+        'mediaType': _mediaType,
+        'likes': [], 
+        'reposts': 0,
+        'commentCount': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      print("Upload failed: $e");
+    } finally {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Quick Post"),
+        actions: [
+          TextButton(
+            onPressed: _isUploading ? null : _uploadPost,
+            child: _isUploading 
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+              : const Text("Post", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          )
+        ],
+      ),
+      body: SingleChildScrollView( // Added scroll just in case
+        child: Column(
+          children: [
+            // --- IMAGE FIRST ---
+            if (_mediaBytes != null)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: _mediaType == "image" 
+                        ? Image.memory(_mediaBytes!, height: 250, width: double.infinity, fit: BoxFit.cover)
+                        : Container( // Simple placeholder for video preview
+                            height: 250, 
+                            color: Colors.black, 
+                            child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 50)),
+                          ),
+                    ),
+                    // Change 'Position Freeman' to 'Positioned'
+                      Positioned( 
+                        right: 5, 
+                        top: 5,
+                        child: CircleAvatar(
+                          radius: 18, // Added a radius to make it look cleaner
+                          backgroundColor: Colors.black54,
+                          child: IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                            onPressed: () => setState(() { 
+                              _mediaBytes = null; 
+                              _pickedFile = null; 
+                              _mediaType = "text"; 
+                            }),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+            // --- CAPTION AFTER ---
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                controller: _captionController,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  hintText: "Share a cooking tip...",
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            const Divider(),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () => _pickMedia(ImageSource.gallery, false), 
+                  icon: const Icon(Icons.image, color: Colors.blue)
+                ),
+                IconButton(
+                  onPressed: () => _pickMedia(ImageSource.gallery, true), 
+                  icon: const Icon(Icons.videocam, color: Colors.red)
+                ),
+                Text(_pickedFile == null ? "Add Photo/Video" : "Change Media"),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class VideoPlayerWidget extends StatefulWidget {
+  final String videoUrl;
+  const VideoPlayerWidget({super.key, required this.videoUrl});
+
+  @override
+  State<VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize the controller with the URL
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        setState(() {
+          _isInitialized = true;
+          _controller.setLooping(true);
+          _controller.play(); // Auto-play for a "social feed" feel
+          _controller.setVolume(0); // Start muted (required for many browsers)
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose(); // Crucial to prevent memory leaks in a ListView
+    super.dispose();
+  }
+
+  void _navigateToFullScreen(BuildContext context) {
+    _controller.pause(); // Stop feed audio before opening full screen
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FullScreenVideoPlayer(videoUrl: widget.videoUrl),
+      ),
+    ).then((_) {
+      // When returning from full screen, resume the feed video
+      if (mounted) {
+        setState(() {});
+        _controller.play();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return Container(
+        height: 250,
+        color: Colors.black,
+        child: const Center(child: CircularProgressIndicator(color: Colors.green)),
+      );
+    }
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: AspectRatio(
+        aspectRatio: _controller.value.aspectRatio,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // LAYER 1: The Video itself
+            VideoPlayer(_controller),
+
+            // LAYER 2: The Invisible Clicker (Web-proof pausing)
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  setState(() {
+                    _controller.value.isPlaying ? _controller.pause() : _controller.play();
+                  });
+                },
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+
+            // LAYER 3: Play Icon (Only shows when paused)
+            if (!_controller.value.isPlaying)
+              const IgnorePointer(
+                child: CircleAvatar(
+                  radius: 25,
+                  backgroundColor: Colors.black45,
+                  child: Icon(Icons.play_arrow, size: 30, color: Colors.white),
+                ),
+              ),
+
+            // LAYER 4: Bottom Controls (Scrubber & Buttons)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.transparent, Colors.black87],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // The Progress Bar (Scrubber)
+                    VideoProgressIndicator(
+                      _controller,
+                      allowScrubbing: true,
+                      colors: const VideoProgressColors(
+                        playedColor: Colors.green,
+                        bufferedColor: Colors.white24,
+                        backgroundColor: Colors.white10,
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Mute/Unmute Toggle
+                        IconButton(
+                          icon: Icon(
+                            _controller.value.volume == 0 ? Icons.volume_off : Icons.volume_up,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _controller.setVolume(_controller.value.volume == 0 ? 1.0 : 0.0);
+                            });
+                          },
+                        ),
+                        // Maximize Button
+                        IconButton(
+                          icon: const Icon(Icons.fullscreen, color: Colors.white, size: 22),
+                          onPressed: () => _navigateToFullScreen(context),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- 2. THE FULL SCREEN PLAYER ---
+class FullScreenVideoPlayer extends StatefulWidget {
+  final String videoUrl;
+  const FullScreenVideoPlayer({super.key, required this.videoUrl});
+
+  @override
+  State<FullScreenVideoPlayer> createState() => _FullScreenVideoPlayerState();
+}
+
+class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
+  late VideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        setState(() {});
+        _controller.play();
+        _controller.setVolume(1.0); // Full sound for full screen
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 1. THE VIDEO
+          if (_controller.value.isInitialized)
+            Center(
+              child: AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: VideoPlayer(_controller),
+              ),
+            )
+          else
+            const CircularProgressIndicator(color: Colors.green),
+
+          // 2. THE INVISIBLE CLICKER (This fixes the pause issue!)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                setState(() {
+                  _controller.value.isPlaying ? _controller.pause() : _controller.play();
+                });
+              },
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+
+          // 3. PLAY ICON OVERLAY
+          if (_controller.value.isInitialized && !_controller.value.isPlaying)
+            const IgnorePointer(
+              child: CircleAvatar(
+                radius: 40,
+                backgroundColor: Colors.black45,
+                child: Icon(Icons.play_arrow, size: 50, color: Colors.white),
+              ),
+            ),
+
+          // 4. CLOSE BUTTON (Top Left)
+          Positioned(
+            top: 50,
+            left: 20,
+            child: CircleAvatar(
+              backgroundColor: Colors.black45,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ),
+
+          // 5. BOTTOM SCRUBBER (Timeframe)
+          Positioned(
+            bottom: 40,
+            left: 20,
+            right: 20,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                VideoProgressIndicator(
+                  _controller,
+                  allowScrubbing: true,
+                  colors: const VideoProgressColors(
+                    playedColor: Colors.green,
+                    bufferedColor: Colors.white24,
+                    backgroundColor: Colors.white10,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text("Drag to skip", style: TextStyle(color: Colors.white54, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class CreateRecipeScreen extends StatefulWidget {
+  const CreateRecipeScreen({super.key});
+
+  @override
+  State<CreateRecipeScreen> createState() => _CreateRecipeScreenState();
+}
+
+class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
+  // 1. Controllers
+  final _titleController = TextEditingController();
+  final _captionController = TextEditingController(); // New: For the story/description
+  final List<TextEditingController> _ingredientControllers = [TextEditingController()];
+  final List<TextEditingController> _stepControllers = [TextEditingController()];
+  bool _isUploading = false; // Add this line
+
+  // 2. Media Variables
+  Uint8List? _mediaBytes;
+  String _mediaType = "image";
+
+  // --- LOGIC: Dynamic List Management ---
+  void _addItem(List<TextEditingController> list) {
+    setState(() => list.add(TextEditingController()));
+  }
+
+  void _removeItem(List<TextEditingController> list, int index) {
+    if (list.length > 1) {
+      setState(() => list.removeAt(index));
+    }
+  }
+
+  // --- LOGIC: Media Picking ---
+  Future<void> _pickCoverMedia() async {
+    final picker = ImagePicker();
+    final XFile? file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (file != null) {
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _mediaBytes = bytes;
+        _mediaType = "image";
+      });
+    }
+  }
+
+
+  Future<void> _uploadRecipe() async {
+  if (_titleController.text.trim().isEmpty || _mediaBytes == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please add a title and a cover photo!")),
+    );
+    return;
+  }
+
+  setState(() => _isUploading = true);
+
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    
+    // --- NEW: FETCH OFFICIAL NAME FROM FIRESTORE ---
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .get();
+    
+    // This looks at the 'username' field you showed me in the database screenshot
+    String officialUsername = userDoc.data()?['username'] ?? "zulkifli";
+    // ----------------------------------------------
+
+    String downloadUrl = "";
+    String fileName = "recipes/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg";
+    final ref = FirebaseStorage.instance.ref().child(fileName);
+    await ref.putData(_mediaBytes!, SettableMetadata(contentType: 'image/jpeg'));
+    downloadUrl = await ref.getDownloadURL();
+
+    List<String> ingredients = _ingredientControllers
+        .map((c) => c.text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList();
+
+    List<String> steps = _stepControllers
+        .map((c) => c.text.trim())
+        .where((text) => text.isNotEmpty)
+        .toList();
+
+    await FirebaseFirestore.instance.collection('posts').add({
+      'userId': user.uid,
+      'username': officialUsername, // <--- CHANGED THIS: Now uses "zulkifli"
+      'postType': 'official_recipe', 
+      'title': _titleController.text.trim(),
+      'caption': _captionController.text.trim(),
+      'mediaUrl': downloadUrl,
+      'mediaType': 'image',
+      'ingredients': ingredients,
+      'instructions': steps,
+      'likes': [],
+      'commentCount': 0,
+      'triedCount': 0,
+      'successRate': 0,
+      'reposts': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    if (mounted) Navigator.pop(context);
+  } catch (e) {
+    debugPrint("Upload failed: $e");
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+  } finally {
+    if (mounted) setState(() => _isUploading = false);
+  }
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("New Official Recipe"),
+        actions: [
+          TextButton(
+  onPressed: _isUploading ? null : _uploadRecipe, // Calls the function we just made
+  child: _isUploading 
+    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+    : const Text("Publish", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+)
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // --- SECTION: COVER MEDIA ---
+            Stack(
+              children: [
+                GestureDetector(
+                  onTap: _pickCoverMedia,
+                  child: Container(
+                    height: 220,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.grey[300]!),
+                      image: _mediaBytes != null 
+                        ? DecorationImage(image: MemoryImage(_mediaBytes!), fit: BoxFit.cover) 
+                        : null,
+                    ),
+                    child: _mediaBytes == null 
+                      ? const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_a_photo, size: 40, color: Colors.green),
+                            SizedBox(height: 8),
+                            Text("Add Cover Photo", style: TextStyle(color: Colors.grey)),
+                          ],
+                        ) 
+                      : null,
+                  ),
+                ),
+                if (_mediaBytes != null)
+                  Positioned(
+                    top: 10, right: 10,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black54,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => setState(() => _mediaBytes = null),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 25),
+
+            // --- SECTION: TITLE ---
+            TextField(
+              controller: _titleController,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(
+                hintText: "Recipe Title",
+                border: InputBorder.none,
+              ),
+            ),
+            
+            // --- SECTION: CAPTION / STORY ---
+            TextField(
+              controller: _captionController,
+              maxLines: null,
+              decoration: const InputDecoration(
+                hintText: "Share the story behind this recipe or a quick tip...",
+                hintStyle: TextStyle(fontSize: 14, color: Colors.grey),
+                border: InputBorder.none,
+              ),
+            ),
+            const Divider(height: 40),
+
+            // --- SECTION: INGREDIENTS ---
+            const Text("Ingredients", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _ingredientControllers.length,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.drag_indicator, color: Colors.grey, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _ingredientControllers[index],
+                          decoration: InputDecoration(
+                            hintText: "Quantity & Name",
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                        onPressed: () => _removeItem(_ingredientControllers, index),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            TextButton.icon(
+              onPressed: () => _addItem(_ingredientControllers),
+              icon: const Icon(Icons.add),
+              label: const Text("Add Ingredient"),
+            ),
+
+            const SizedBox(height: 30),
+
+            // --- SECTION: INSTRUCTIONS ---
+            const Text("Instructions", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _stepControllers.length,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 15.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Step ${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _stepControllers[index],
+                              maxLines: null,
+                              decoration: const InputDecoration(
+                                hintText: "What do we do in this step?",
+                                border: UnderlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            onPressed: () => _removeItem(_stepControllers, index),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: () => _addItem(_stepControllers),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                icon: const Icon(Icons.add),
+                label: const Text("Add Next Step"),
+              ),
+            ),
+            const SizedBox(height: 100),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// import 'expanded_post_screen.dart'; // Make sure to import your screen
+// import 'video_player_widget.dart'; // Make sure to import your video widget
+
+// import 'expanded_post_screen.dart'; // Un-comment this in your actual file!
+
+class RecipeCardPost extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final String postId;
+
+  const RecipeCardPost({super.key, required this.data, required this.postId});
+
+  // --- 1. FORMAT TIMESTAMP ---
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return "Just now";
+    DateTime date = (timestamp as Timestamp).toDate();
+    return "${date.day}/${date.month}/${date.year} at ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+  }
+
+  // --- 2. REPOST LOGIC (The "Photocopier") ---
+  Future<void> _handleRepost(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // 1. Get your official name
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      String myName = userDoc.data()?['username'] ?? "zulkifli";
+
+      // 2. Check duplicates
+      final existing = await FirebaseFirestore.instance
+          .collection('posts')
+          .where('userId', isEqualTo: user.uid)
+          .where('originalPostId', isEqualTo: postId)
+          .limit(1)
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Already shared!")));
+        return;
+      }
+
+      // 3. COPY EVERYTHING (Fixes the "Missing Title" bug)
+      List ingredients = List.from(data['ingredients'] ?? []);
+      List instructions = List.from(data['instructions'] ?? []);
+
+      await FirebaseFirestore.instance.collection('posts').add({
+        'title': data['title'] ?? "Untitled Recipe", // <--- Copies Title
+        'caption': data['caption'] ?? "",
+        'ingredients': ingredients,
+        'instructions': instructions,
+        'mediaUrl': data['mediaUrl'] ?? "",
+        'mediaType': data['mediaType'] ?? "image",
+        'postType': data['postType'] ?? "official_recipe",
+        
+        // New Owner Info
+        'userId': user.uid,
+        'username': myName,
+        'isRepost': true,
+        'originalAuthor': data['username'] ?? "Chef",
+        'originalPostId': postId,
+        'createdAt': FieldValue.serverTimestamp(),
+        
+        // Reset Stats
+        'likes': [],
+        'reposts': 0,
+        'commentCount': 0,
+        'triedCount': 0, // <--- Copies the fields for Trust Bar (starts at 0)
+        'successRate': 0,
+      });
+
+      // 4. Update Original Count
+      await FirebaseFirestore.instance.collection('posts').doc(postId).update({
+        'reposts': FieldValue.increment(1),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Shared as $myName!")));
+    } catch (e) {
+      debugPrint("Repost Error: $e");
+    }
+  }
+
+  // --- 3. SUPPORT DIALOG ---
+  void _showTipDialog(BuildContext context) {
+    // (Keep your existing dialog code here, omitted for brevity)
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Support Dialog Opened")));
+  }
+
+  // --- 4. LIKE LOGIC ---
+  Future<void> _toggleLike() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    DocumentReference postRef = FirebaseFirestore.instance.collection('posts').doc(postId);
+    List likes = data['likes'] ?? [];
+    if (likes.contains(uid)) {
+      await postRef.update({'likes': FieldValue.arrayRemove([uid])});
+    } else {
+      await postRef.update({'likes': FieldValue.arrayUnion([uid])});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 25, left: 10, right: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. HEADER
+          ListTile(
+            leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.person, color: Colors.white)),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(data['username'] ?? "Chef", style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (data['isRepost'] == true)
+                  Text("Shared from ${data['originalAuthor']}", style: const TextStyle(fontSize: 11, color: Colors.green)),
+              ],
+            ),
+            subtitle: Text(_formatTimestamp(data['createdAt']), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            trailing: const Icon(Icons.more_vert),
+          ),
+
+          // 2. IMAGE & TRUST BAR
+          InkWell(
+            onTap: () {
+               // Make sure to un-comment this and import the file!
+               // Navigator.push(context, MaterialPageRoute(builder: (context) => ExpandedPostScreen(data: data, postId: postId)));
+            },
+            child: Column(
+              children: [
+                Container(
+                  height: 250, width: double.infinity, color: Colors.black12,
+                  child: data['mediaUrl'] != null 
+                    ? Image.network(data['mediaUrl'], fit: BoxFit.cover) 
+                    : const Center(child: Icon(Icons.image)),
+                ),
+                // TRUST BAR (This was missing in your screenshot)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                  color: Colors.green[50],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("👥 ${data['triedCount'] ?? 0} tried this", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                      Text("✅ ${data['successRate'] ?? 0}% Success Rate", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    children: [
+                      Text(data['title'] ?? "New Recipe", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Text(data['caption'] ?? "", maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 1),
+
+          // 3. ACTION BAR (The Fix for the Missing Button)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: Icon((data['likes'] as List?)?.contains(FirebaseAuth.instance.currentUser?.uid) ?? false ? Icons.favorite : Icons.favorite_border, color: Colors.red),
+                  onPressed: _toggleLike,
+                ),
+                Text("${(data['likes'] as List?)?.length ?? 0}"),
+                const SizedBox(width: 15),
+                
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline, color: Colors.grey),
+                  onPressed: () {
+                    // Navigator.push(context, MaterialPageRoute(builder: (context) => ExpandedPostScreen(data: data, postId: postId)));
+                  },
+                ),
+                Text("${data['commentCount'] ?? 0}"),
+                const SizedBox(width: 15),
+
+                IconButton(
+                  icon: const Icon(Icons.repeat, color: Colors.grey),
+                  onPressed: () => _handleRepost(context),
+                ),
+                Text("${data['reposts'] ?? 0}"),
+
+                const Spacer(), // Pushes Support button to the right
+
+                // THIS BUTTON WAS MISSING IN YOUR SCREENSHOT
+                TextButton.icon(
+                  onPressed: () => _showTipDialog(context),
+                  icon: const Icon(Icons.stars, color: Colors.orange, size: 22),
+                  label: const Text("SUPPORT", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(backgroundColor: Colors.orange.withOpacity(0.1)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
