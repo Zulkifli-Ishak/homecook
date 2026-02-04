@@ -86,7 +86,9 @@ class _CreateQuickPostScreenState extends State<CreateQuickPostScreen> {
         actions: [
           TextButton(
             onPressed: _isUploading ? null : _uploadPost,
-            child: _isUploading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("POST"),
+            child: _isUploading 
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+              : const Text("POST", style: TextStyle(fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -94,15 +96,27 @@ class _CreateQuickPostScreenState extends State<CreateQuickPostScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(controller: _captionController, maxLines: 4, decoration: const InputDecoration(hintText: "What's cooking?", border: InputBorder.none)),
+            TextField(
+              controller: _captionController, 
+              maxLines: 4, 
+              decoration: const InputDecoration(hintText: "What's cooking?", border: InputBorder.none)
+            ),
             if (_mediaBytes != null)
               Stack(
                 children: [
                   Container(
                     height: 250, width: double.infinity, color: Colors.black,
-                    child: _mediaType == 'image' ? Image.memory(_mediaBytes!, fit: BoxFit.cover) : const Center(child: Icon(Icons.play_circle, color: Colors.white, size: 50)),
+                    child: _mediaType == 'image' 
+                        ? Image.memory(_mediaBytes!, fit: BoxFit.cover) 
+                        : const Center(child: Icon(Icons.play_circle, color: Colors.white, size: 50)),
                   ),
-                  Positioned(right: 5, top: 5, child: IconButton(onPressed: () => setState(() => _mediaBytes = null), icon: const Icon(Icons.close, color: Colors.white))),
+                  Positioned(
+                    right: 5, top: 5, 
+                    child: IconButton(
+                      onPressed: () => setState(() => _mediaBytes = null), 
+                      icon: const Icon(Icons.close, color: Colors.white)
+                    )
+                  ),
                 ],
               ),
             Row(children: [
@@ -198,17 +212,31 @@ class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("New Recipe"),
-        actions: [TextButton(onPressed: _isUploading ? null : _publish, child: _isUploading ? const CircularProgressIndicator() : const Text("PUBLISH"))],
+        actions: [
+          TextButton(
+            onPressed: _isUploading ? null : _publish, 
+            child: _isUploading 
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+              : const Text("PUBLISH", style: TextStyle(fontWeight: FontWeight.bold))
+          )
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             GestureDetector(
               onTap: _pickCover,
               child: Container(
-                height: 200, width: double.infinity, color: Colors.grey[200],
-                child: _coverBytes != null ? Image.memory(_coverBytes!, fit: BoxFit.cover) : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt), Text("Add Cover")]),
+                height: 200, width: double.infinity, 
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(12)
+                ),
+                child: _coverBytes != null 
+                  ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_coverBytes!, fit: BoxFit.cover)) 
+                  : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.camera_alt), Text("Add Cover Photo")]),
               ),
             ),
             const SizedBox(height: 15),
@@ -216,12 +244,20 @@ class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
             const SizedBox(height: 10),
             TextField(controller: _captionController, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
             const SizedBox(height: 20),
-            const Text("Ingredients", style: TextStyle(fontWeight: FontWeight.bold)),
-            ..._ingredients.map((c) => TextField(controller: c, decoration: const InputDecoration(hintText: "Item"))),
-            TextButton(onPressed: () => setState(() => _ingredients.add(TextEditingController())), child: const Text("+ Add")),
-            const Text("Steps", style: TextStyle(fontWeight: FontWeight.bold)),
-            ..._instructions.map((c) => TextField(controller: c, decoration: const InputDecoration(hintText: "Instruction"))),
-            TextButton(onPressed: () => setState(() => _instructions.add(TextEditingController())), child: const Text("+ Add")),
+            const Text("Ingredients", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ..._ingredients.asMap().entries.map((entry) => Row(children: [
+              Expanded(child: TextField(controller: entry.value, decoration: const InputDecoration(hintText: "e.g. 200g Flour"))),
+              IconButton(icon: const Icon(Icons.remove_circle, color: Colors.red), onPressed: () => setState(() => _ingredients.removeAt(entry.key))),
+            ])),
+            TextButton(onPressed: () => setState(() => _ingredients.add(TextEditingController())), child: const Text("+ Add Ingredient")),
+            const SizedBox(height: 10),
+            const Text("Steps", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ..._instructions.asMap().entries.map((entry) => Row(children: [
+              Expanded(child: TextField(controller: entry.value, decoration: InputDecoration(hintText: "Step ${entry.key + 1}"))),
+              IconButton(icon: const Icon(Icons.remove_circle, color: Colors.red), onPressed: () => setState(() => _instructions.removeAt(entry.key))),
+            ])),
+            TextButton(onPressed: () => setState(() => _instructions.add(TextEditingController())), child: const Text("+ Add Step")),
+            const SizedBox(height: 40),
           ],
         ),
       ),

@@ -60,23 +60,52 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
   }
 
   Future<void> _deleteComment(String targetId, String commentId) async {
-    try {
-      final replyQuery = await FirebaseFirestore.instance
-          .collection('posts')
-          .doc(targetId)
-          .collection('comments')
-          .where('parentCommentId', isEqualTo: commentId)
-          .get();
+  try {
+    // 1. Find all replies that belong to this comment
+    final replyQuery = await FirebaseFirestore.instance
+        .collection('posts')
+        .doc(targetId)
+        .collection('comments')
+        .where('parentCommentId', isEqualTo: commentId)
+        .get();
 
-      int totalToDelete = 1 + replyQuery.docs.length;
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-      batch.delete(FirebaseFirestore.instance.collection('posts').doc(targetId).collection('comments').doc(commentId));
-      for (var doc in replyQuery.docs) { batch.delete(doc.reference); }
+    // 2. Prepare a Batch (Atomic operation: all succeed or all fail)
+    WriteBatch batch = FirebaseFirestore.instance.batch();
 
-      await batch.commit();
-      await FirebaseFirestore.instance.collection('posts').doc(targetId).update({'commentCount': FieldValue.increment(-totalToDelete)});
-    } catch (e) { debugPrint("Delete failed: $e"); }
+    // Delete the parent comment
+    DocumentReference parentRef = FirebaseFirestore.instance
+        .collection('posts')
+        .doc(targetId)
+        .collection('comments')
+        .doc(commentId);
+    batch.delete(parentRef);
+
+    // Delete all found replies
+    for (var doc in replyQuery.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // 3. Execute the batch delete
+    await batch.commit();
+
+    // 4. Update the total comment count on the post
+    // We decrement by (1 parent + number of replies)
+    int totalDeleted = 1 + replyQuery.docs.length;
+    await FirebaseFirestore.instance
+        .collection('posts')
+        .doc(targetId)
+        .update({'commentCount': FieldValue.increment(-totalDeleted)});
+
+    debugPrint("Deleted parent and $totalDeleted replies successfully.");
+  } catch (e) {
+    debugPrint("Delete failed: $e");
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to delete comment and its replies.")),
+      );
+    }
   }
+}
 
   Future<void> _submitComment(String targetId) async {
     String text = _commentController.text.trim();
