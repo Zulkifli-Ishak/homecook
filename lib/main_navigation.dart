@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'feed_screen.dart';
 import 'profile_screens.dart'; 
 import 'messaging_screens.dart'; 
-import 'setting_screen.dart'; // Uncomment this once you create the file!
+import 'setting_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});

@@ -64,11 +64,14 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red), 
             title: const Text("Logout", style: TextStyle(color: Colors.red)), 
-            onTap: () { 
-              FirebaseAuth.instance.signOut(); 
-              Navigator.of(context, rootNavigator: true).pushReplacement(
-                MaterialPageRoute(builder: (_) => const LoginPage())
-              ); 
+            onTap: () async { 
+              await FirebaseAuth.instance.signOut(); 
+              if (context.mounted) {
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginPage()),
+                  (route) => false,
+                );
+              }
             }
           ),
           ListTile(

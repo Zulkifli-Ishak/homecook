@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'main_navigation.dart';
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -31,28 +32,62 @@ class HomecookApp extends StatelessWidget {
   const HomecookApp({super.key});
 
   @override
+Widget build(BuildContext context) {
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(primarySwatch: Colors.green),
+    home: StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // If Firebase is still checking the login status...
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LoadingSplashScreen(); // Use a custom splash screen
+        }
+        
+        if (snapshot.hasData) {
+          return const MainNavigation();
+        } else {
+          return const LoginPage();
+        }
+      },
+    ),
+  );
+}
+
+
+}
+
+
+// Add this Widget at the bottom of main.dart
+class LoadingSplashScreen extends StatelessWidget {
+  const LoadingSplashScreen({super.key});
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'HomeCook',
-      theme: ThemeData(primarySwatch: Colors.green),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
-          }
-          if (snapshot.hasData) {
-            return const MainNavigation();
-          } else {
-            return const LoginPage();
-          }
-        },
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.restaurant_menu, size: 100, color: Colors.green),
+            const SizedBox(height: 20),
+            const Text(
+              "Homecook",
+              style: TextStyle(
+                fontSize: 28, 
+                fontWeight: FontWeight.bold, 
+                color: Colors.green
+              ),
+            ),
+            const SizedBox(height: 30),
+            const CircularProgressIndicator(color: Colors.green),
+          ],
+        ),
       ),
     );
   }
 }
-
 // --- LOGIN PAGE ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -70,7 +105,14 @@ class _LoginPageState extends State<LoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-      // MainNavigation is handled by the StreamBuilder in HomecookApp
+      
+      // ADD THIS LINE:
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigation()),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? "Login failed")));
     }

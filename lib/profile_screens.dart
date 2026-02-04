@@ -9,6 +9,7 @@ import 'main.dart';
 import 'helper_widgets.dart'; 
 import 'recipe_card_post.dart'; 
 import 'creation_screens.dart'; 
+import 'messaging_screens.dart';
 
 // ----------------------------------------------------------------------
 // 1. THE REUSABLE TEMPLATE
@@ -394,9 +395,16 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
               borderRadius: BorderRadius.circular(20),
               child: (url != null && url != "") 
                   ? Image.network(url, fit: BoxFit.contain)
-                  : Container(color: Colors.white, padding: const EdgeInsets.all(50), child: const Icon(Icons.person, size: 150, color: Colors.grey)),
+                  : Container(
+                      color: Colors.white, 
+                      padding: const EdgeInsets.all(50), 
+                      child: const Icon(Icons.person, size: 150, color: Colors.grey)
+                    ),
             ),
-            IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white, size: 30))
+            IconButton(
+              onPressed: () => Navigator.pop(context), 
+              icon: const Icon(Icons.close, color: Colors.white, size: 30)
+            )
           ],
         ),
       ),
@@ -411,9 +419,15 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
         title: const Text("Unfollow?"),
         content: const Text("Are you sure you want to stop following this chef?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
           TextButton(
-            onPressed: () { Navigator.pop(context); _handleFollowAction(); },
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey))
+          ),
+          TextButton(
+            onPressed: () { 
+              Navigator.pop(context); 
+              _handleFollowAction(); 
+            },
             child: const Text("Unfollow", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ),
         ],
@@ -445,6 +459,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       stream: FirebaseFirestore.instance.collection('users').doc(widget.userId).snapshots(),
       builder: (context, snapshot) {
         String? profilePic = snapshot.data?['profilePic'];
+        String chefName = snapshot.data?['username'] ?? "Chef";
         
         return ProfileBaseLayout(
           userId: widget.userId,
@@ -463,7 +478,13 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () => isFollowing ? _confirmUnfollow(context) : _handleFollowAction(),
-                      child: Text(isFollowing ? "Followed" : "Follow", style: TextStyle(color: isFollowing ? Colors.black87 : Colors.white, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        isFollowing ? "Followed" : "Follow", 
+                        style: TextStyle(
+                          color: isFollowing ? Colors.black87 : Colors.white, 
+                          fontWeight: FontWeight.bold
+                        )
+                      ),
                     ),
                   ),
                 ),
@@ -471,8 +492,25 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                   const SizedBox(width: 12),
                   Container(
                     height: 45, width: 45,
-                    decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(12)),
-                    child: IconButton(onPressed: () {}, icon: const Icon(Icons.mail_outline, color: Colors.green)),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50], 
+                      borderRadius: BorderRadius.circular(12)
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        // NAVIGATE TO DM
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatRoomScreen(
+                              receiverId: widget.userId,
+                              receiverName: chefName,
+                            ),
+                          ),
+                        );
+                      }, 
+                      icon: const Icon(Icons.mail_outline, color: Colors.green)
+                    ),
                   )
                 ]
               ],
