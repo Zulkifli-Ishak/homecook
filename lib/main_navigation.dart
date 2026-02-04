@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'feed_screen.dart';
-import 'profile_screens.dart'; // (Assume your profile/wallet/inbox code is in here)
-import 'messaging_screens.dart'; // (Assume your inbox code is here)
+import 'profile_screens.dart'; 
+import 'messaging_screens.dart'; 
+// import 'settings_screen.dart'; // Uncomment this once you create the file!
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -13,10 +14,11 @@ class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
   
   final List<Widget> _pages = [
-    const FeedScreen(), // Uses the new FeedScreen
-    const Scaffold(body: Center(child: Text("Wallet (Copy your WalletScreen here)"))),
-    const InboxScreen(), // Uses your Inbox logic
-    const ProfileScreen(), // Uses your Profile logic
+    const FeedScreen(),
+    const Scaffold(body: Center(child: Text("Wallet"))), // Replace with your wallet later
+    const InboxScreen(),
+    const ProfileScreen(),
+    const SettingsScreen(), // Now uses the real screen!
   ];
 
   @override
@@ -25,14 +27,16 @@ class _MainNavigationState extends State<MainNavigation> {
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        type: BottomNavigationBarType.fixed,
+        type: BottomNavigationBarType.fixed, // Essential for 5+ items
         selectedItemColor: Colors.green,
+        unselectedItemColor: Colors.grey, // Helps keep it looking balanced
         onTap: (index) => setState(() => _selectedIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Feed'),
           BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
           BottomNavigationBarItem(icon: Icon(Icons.mail), label: 'Inbox'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'), // New addition
         ],
       ),
     );
