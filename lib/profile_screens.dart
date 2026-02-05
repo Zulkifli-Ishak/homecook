@@ -56,8 +56,8 @@ class ProfileBaseLayout extends StatelessWidget {
                 SliverAppBar(
                   pinned: true,
                   floating: true,
-                  backgroundColor: Colors.transparent, // <--- CHANGED HERE
-                  foregroundColor: Colors.black, 
+                  backgroundColor: Color(0xFFFEF7FF), // <--- CHANGED HERE
+                  foregroundColor: Colors.green, 
                   elevation: 0,
                   centerTitle: true,
                   title: null, 
@@ -254,7 +254,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Color(0xFFFEF7FF),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
