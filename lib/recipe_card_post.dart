@@ -25,7 +25,7 @@ class RecipeCardPost extends StatelessWidget {
     return "${date.day} ${months[date.month - 1]} ${date.year} at ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
   }
 
-  // --- REPOST LOGIC ---
+  // --- REPOST LOGIC (UPDATED) ---
   Future<void> _handleRepost(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -57,17 +57,26 @@ class RecipeCardPost extends StatelessWidget {
 
       // CREATE REPOST
       await FirebaseFirestore.instance.collection('posts').add({
-        ...data,
+        ...data, // Copy title, media, ingredients
+        
+        // --- CRITICAL OVERRIDES ---
         'userId': user.uid,          
-        'username': data['username'], 
-        'userProfilePic': data['userProfilePic'], 
+        'username': myName, // Use MY username, not the original author's
+        'userProfilePic': userDoc.data()?['profilePic'] ?? "", 
+        
+        'postType': 'repost', // <--- THIS hides it from Search
         'isRepost': true,
+        
         'reposterName': myName,       
         'originalAuthorId': data['userId'], 
         'originalPostId': postId,
         'createdAt': FieldValue.serverTimestamp(),
+        
+        // Reset counters for the new post
         'likes': [], 
         'reposts': 0, 
+        'commentCount': 0,
+        // --------------------------
       });
 
       await FirebaseFirestore.instance.collection('posts').doc(postId).update({'reposts': FieldValue.increment(1)});

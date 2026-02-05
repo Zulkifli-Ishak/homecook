@@ -5,6 +5,7 @@ import 'feed_screen.dart';
 import 'profile_screens.dart'; 
 import 'messaging_screens.dart'; 
 import 'setting_screen.dart';
+import 'search_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -17,7 +18,8 @@ class _MainNavigationState extends State<MainNavigation> {
   
   final List<Widget> _pages = [
     const FeedScreen(),
-    const Scaffold(body: Center(child: Text("Wallet"))), 
+    const SearchScreen(),
+    //const Scaffold(body: Center(child: Text("Wallet"))), 
     const InboxScreen(),
     const ProfileScreen(),
     const SettingsScreen(), 
@@ -35,9 +37,9 @@ class _MainNavigationState extends State<MainNavigation> {
         onTap: (index) => setState(() => _selectedIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Feed'),
-          BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'search'),
           
-          // --- UPDATED INBOX ICON WITH BADGE ---
+          // --- UPDATED INBOX ICON WITH BADGE  account_balance_wallet ---
           BottomNavigationBarItem(
             icon: InboxIconWithBadge(), // <--- Custom Widget used here
             label: 'Inbox'

@@ -41,8 +41,8 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
       // --- NEW: NOTIFICATION (LIKE) ---
       // Determine real owner (if repost, get original author)
       String realOwnerId = widget.data['isRepost'] == true 
-           ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
-           : widget.data['userId'];
+            ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
+            : widget.data['userId'];
 
       NotificationService.sendNotification(
         toUserId: realOwnerId, 
@@ -63,22 +63,30 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
       String originalPost = widget.data['isRepost'] == true ? widget.data['originalPostId'] : widget.postId;
 
       await FirebaseFirestore.instance.collection('posts').add({
-        ...widget.data,
+        ...widget.data, // Copies title, mediaUrl, ingredients, etc.
+        
+        // --- THE FIX: CRITICAL DATA OVERRIDES ---
         'userId': user.uid,
-        'isRepost': true,
+        'postType': 'repost',   // <--- THIS hides it from Search automatically
+        'isRepost': true,       // UI Flag
+        'commentCount': 0,      // Reset comments for the new repost
+        'likes': [],            // Reset likes
+        'reposts': 0,           // Reset repost count
+        // ----------------------------------------
+        
         'reposterName': myName,
         'originalAuthorId': widget.data['originalAuthorId'] ?? widget.data['userId'],
         'originalPostId': originalPost,
         'createdAt': FieldValue.serverTimestamp(),
-        'likes': [],
-        'reposts': 0,
       });
+
+      // Update the Original Post's repost count
       await FirebaseFirestore.instance.collection('posts').doc(originalPost).update({'reposts': FieldValue.increment(1)});
       
       // --- NEW: NOTIFICATION (REPOST) ---
       String realOwnerId = widget.data['isRepost'] == true 
-           ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
-           : widget.data['userId'];
+            ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
+            : widget.data['userId'];
 
       NotificationService.sendNotification(
         toUserId: realOwnerId, 
@@ -164,38 +172,28 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
     await FirebaseFirestore.instance.collection('posts').doc(targetId).update({'commentCount': FieldValue.increment(1)});
     
     // --- NEW: NOTIFICATION (COMMENT/REPLY) ---
-    // Case A: Reply
     if (_replyingToId != null && _replyingToId != user.uid) {
-       // Note: We need the UserID of the person we are replying to. 
-       // In this simpler version, we notify the POST OWNER if we can't easily find the comment owner ID without another fetch.
-       // However, strictly speaking, `_replyingToId` here is the COMMENT ID, not the USER ID. 
-       // To notify the specific user you replied to, you'd need their UID.
-       // For now, let's keep it simple and notify the POST OWNER to avoid complex lookups.
-       // Or better: If you want to notify the specific user, you need to store their UID in `_replyingToId` logic (which is complex).
-       
-       // SAFE FALLBACK: Notify the Post Owner always
+       // Notify logic (simplified to owner for now)
        String realOwnerId = widget.data['isRepost'] == true 
            ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
            : widget.data['userId'];
 
        NotificationService.sendNotification(
-          toUserId: realOwnerId, 
-          type: 'comment', 
-          postId: targetId,
-          body: "Commented: $text"
+         toUserId: realOwnerId, 
+         type: 'comment', 
+         postId: targetId,
+         body: "Commented: $text"
        );
-    } 
-    // Case B: Normal Comment
-    else {
+    } else {
        String realOwnerId = widget.data['isRepost'] == true 
            ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
            : widget.data['userId'];
 
        NotificationService.sendNotification(
-          toUserId: realOwnerId, 
-          type: 'comment', 
-          postId: targetId,
-          body: "Commented: $text"
+         toUserId: realOwnerId, 
+         type: 'comment', 
+         postId: targetId,
+         body: "Commented: $text"
        );
     }
     // -----------------------------------------
@@ -210,7 +208,10 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isOfficialRecipe = widget.data['postType'] == 'official_recipe';
+    // Note: official_recipe is the original type. 
+    // If it's a repost, we still display it mostly the same, 
+    // but the 'postType' in Firestore will now be 'repost'.
+    final bool isOfficialRecipe = widget.data['postType'] == 'official_recipe' || widget.data['postType'] == 'repost'; 
     final String targetPostId = widget.data['isRepost'] == true ? widget.data['originalPostId'] : widget.postId;
     final String myUid = FirebaseAuth.instance.currentUser?.uid ?? "";
 
@@ -440,7 +441,7 @@ class RecipeDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     List ingredients = recipeData['ingredients'] ?? [];
-    List instructions = recipeData['steps'] ?? []; // Changed from 'instructions' to 'steps' if needed, otherwise 'instructions'
+    List instructions = recipeData['steps'] ?? recipeData['instructions'] ?? []; 
 
     return Scaffold(
       appBar: AppBar(title: Text(recipeData['title'] ?? "Recipe")),

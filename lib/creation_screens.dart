@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
-import 'helper_widgets.dart';
+import 'helper_widgets.dart'; // Ensure this file exists in your project
 
 // ---------------------------------------------------------
 // 1. QUICK POST SCREEN
@@ -132,7 +132,7 @@ class _CreateQuickPostScreenState extends State<CreateQuickPostScreen> {
 }
 
 // ---------------------------------------------------------
-// 2. OFFICIAL RECIPE SCREEN
+// 2. OFFICIAL RECIPE SCREEN (Updated)
 // ---------------------------------------------------------
 class CreateRecipeScreen extends StatefulWidget {
   const CreateRecipeScreen({super.key});
@@ -179,13 +179,21 @@ class _CreateRecipeScreenState extends State<CreateRecipeScreen> {
         'userId': user.uid,
         'username': userData['username'] ?? "Chef",
         'userProfilePic': userData['profilePic'] ?? "",
+        
+        // --- SEARCH FIELDS ---
         'title': _titleController.text,
+        'title_lower': _titleController.text.trim().toLowerCase(), // REQUIRED for search
+        
         'caption': _captionController.text,
         'mediaUrl': url,
         'mediaType': 'image',
         'ingredients': _ingredients.map((c) => c.text).where((t) => t.isNotEmpty).toList(),
         'instructions': _instructions.map((c) => c.text).where((t) => t.isNotEmpty).toList(),
+        
+        // --- FILTERING FIELDS ---
         'postType': 'official_recipe',
+        'isRepost': false, // <--- ADDED THIS: Marks this as an Original Recipe
+        
         'createdAt': FieldValue.serverTimestamp(),
         'likes': [],
         'reposts': 0,

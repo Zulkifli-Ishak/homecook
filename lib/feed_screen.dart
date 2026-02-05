@@ -79,12 +79,12 @@ class _FeedScreenState extends State<FeedScreen> {
         appBar: AppBar(
           title: const Text('HomeCook'),
           centerTitle: true,
-          actions: [
+          /*actions: [
             IconButton(
               icon: const Icon(Icons.search),
               onPressed: () => showSearch(context: context, delegate: RecipeSearchDelegate()),
             ),
-          ],
+          ],*/
           bottom: const TabBar(
             indicatorColor: Colors.green,
             labelColor: Colors.green,

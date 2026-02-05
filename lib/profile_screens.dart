@@ -10,6 +10,7 @@ import 'helper_widgets.dart';
 import 'recipe_card_post.dart'; 
 import 'creation_screens.dart'; 
 import 'messaging_screens.dart';
+import 'expanded_post_screen.dart';
 
 // ----------------------------------------------------------------------
 // 1. THE REUSABLE TEMPLATE (Updated Background Color)
@@ -154,7 +155,7 @@ class ProfileBaseLayout extends StatelessWidget {
               body: TabBarView(
                 children: [
                   PostsTab(viewingUid: userId),
-                  const RecipesTab(),
+                  RecipesTab(viewingUid: userId),
                   if (showSavedTab) const SavedTab(),
                 ],
               ),
@@ -666,10 +667,97 @@ class PostsTab extends StatelessWidget {
   }
 }
 
+// ----------------------------------------------------------------------
+// 5. RECIPES TAB (Final Optimized Version)
+// ----------------------------------------------------------------------
 class RecipesTab extends StatelessWidget {
-  const RecipesTab({super.key});
+  final String viewingUid;
+
+  const RecipesTab({super.key, required this.viewingUid});
+
   @override
-  Widget build(BuildContext context) => const EmptyStateWidget(message: "No official recipes yet");
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('posts')
+          .where('userId', isEqualTo: viewingUid)
+          .where('postType', isEqualTo: 'official_recipe')
+          // --- MATCH YOUR MANUAL INDEX: If you have an "Up" arrow in Firebase, set descending to false ---
+          .orderBy('createdAt', descending: true) 
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          // This will print the exact link if the index is still wrong
+          debugPrint("Firestore Error: ${snapshot.error}");
+          return Center(child: Text("Waiting for Index... Check console for link."));
+        }
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        var docs = snapshot.data!.docs;
+        if (docs.isEmpty) {
+          return const Center(child: Text("No official recipes yet.", style: TextStyle(color: Colors.grey)));
+        }
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(12),
+          // Let the grid scroll naturally within the TabBarView
+          physics: const BouncingScrollPhysics(), 
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 15,
+            // 0.7 gives more height to the box so the title doesn't cause "Overflow"
+            childAspectRatio: 0.7, 
+          ),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            var data = docs[index].data() as Map<String, dynamic>;
+            String postId = docs[index].id;
+            String? imageUrl = data['mediaUrl'];
+
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ExpandedPostScreen(
+                  data: data, 
+                  postId: postId
+                )));
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          border: Border.all(color: Colors.grey.shade300, width: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: (imageUrl != null && imageUrl.isNotEmpty) 
+                          ? Image.network(imageUrl, fit: BoxFit.cover, width: double.infinity)
+                          : const Icon(Icons.restaurant, color: Colors.grey, size: 30),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Text(
+                      data['title'] ?? "Untitled",
+                      maxLines: 2, // Allow 2 lines so long names don't overflow
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, height: 1.2),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 
