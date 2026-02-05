@@ -185,9 +185,16 @@ class _SignUpPageState extends State<SignUpPage> {
     );
   }
 
+  // In main.dart
+
   void _finalizeSignUp(bool isHalalOnly) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      // 1. Update the Auth Profile (Crucial fix!)
+      await user.updateDisplayName(_nameController.text.trim()); 
+      await user.reload(); // Ensure the local user object gets the update
+
+      // 2. Write to Firestore (Existing code)
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'username': _nameController.text.trim(),
         'email': _emailController.text.trim(),
@@ -198,8 +205,11 @@ class _SignUpPageState extends State<SignUpPage> {
         'successRecipes': 0,
         'createdAt': DateTime.now(),
       });
-      Navigator.pop(context); // Close dialog
-      Navigator.pop(context); // Close Signup page
+
+      if (mounted) {
+        Navigator.pop(context); // Close dialog
+        Navigator.pop(context); // Close Signup page
+      }
     }
   }
 

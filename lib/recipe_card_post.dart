@@ -58,7 +58,7 @@ class RecipeCardPost extends StatelessWidget {
       // CREATE REPOST
       await FirebaseFirestore.instance.collection('posts').add({
         ...data,
-        'userId': user.uid,           
+        'userId': user.uid,          
         'username': data['username'], 
         'userProfilePic': data['userProfilePic'], 
         'isRepost': true,
@@ -71,6 +71,16 @@ class RecipeCardPost extends StatelessWidget {
       });
 
       await FirebaseFirestore.instance.collection('posts').doc(postId).update({'reposts': FieldValue.increment(1)});
+      
+      // --- NEW: SEND NOTIFICATION (REPOST) ---
+      NotificationService.sendNotification(
+        toUserId: data['userId'], 
+        type: 'repost', 
+        postId: postId,
+        body: "Reposted your recipe!"
+      );
+      // ---------------------------------------
+
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Reposted to your profile!")));
     } catch (e) { debugPrint(e.toString()); }
   }
@@ -87,6 +97,18 @@ class RecipeCardPost extends StatelessWidget {
       await ref.update({'likes': FieldValue.arrayRemove([uid])});
     } else {
       await ref.update({'likes': FieldValue.arrayUnion([uid])});
+
+      // --- NEW: SEND NOTIFICATION (LIKE) ---
+      // We check if it is a repost to find the real owner
+      String ownerId = data['originalAuthorId'] ?? data['userId'];
+      
+      NotificationService.sendNotification(
+        toUserId: ownerId, 
+        type: 'like', 
+        postId: targetPostId,
+        body: "Liked your recipe!"
+      );
+      // ------------------------------------
     }
   }
 

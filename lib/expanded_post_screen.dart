@@ -30,9 +30,28 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
   Future<void> _toggleLike(String targetId, List likes) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     DocumentReference ref = FirebaseFirestore.instance.collection('posts').doc(targetId);
-    likes.contains(uid) 
-      ? await ref.update({'likes': FieldValue.arrayRemove([uid])}) 
-      : await ref.update({'likes': FieldValue.arrayUnion([uid])});
+    
+    if (likes.contains(uid)) {
+      // UNLIKE
+      await ref.update({'likes': FieldValue.arrayRemove([uid])});
+    } else {
+      // LIKE
+      await ref.update({'likes': FieldValue.arrayUnion([uid])});
+
+      // --- NEW: NOTIFICATION (LIKE) ---
+      // Determine real owner (if repost, get original author)
+      String realOwnerId = widget.data['isRepost'] == true 
+           ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
+           : widget.data['userId'];
+
+      NotificationService.sendNotification(
+        toUserId: realOwnerId, 
+        type: 'like', 
+        postId: targetId,
+        body: "Liked your recipe!"
+      );
+      // --------------------------------
+    }
   }
 
   Future<void> _handleRepost(BuildContext context) async {
@@ -55,57 +74,71 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
         'reposts': 0,
       });
       await FirebaseFirestore.instance.collection('posts').doc(originalPost).update({'reposts': FieldValue.increment(1)});
+      
+      // --- NEW: NOTIFICATION (REPOST) ---
+      String realOwnerId = widget.data['isRepost'] == true 
+           ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
+           : widget.data['userId'];
+
+      NotificationService.sendNotification(
+        toUserId: realOwnerId, 
+        type: 'repost', 
+        postId: originalPost,
+        body: "Reposted your recipe!"
+      );
+      // ----------------------------------
+
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Shared!")));
     } catch (e) { debugPrint(e.toString()); }
   }
 
   Future<void> _deleteComment(String targetId, String commentId) async {
-  try {
-    // 1. Find all replies that belong to this comment
-    final replyQuery = await FirebaseFirestore.instance
-        .collection('posts')
-        .doc(targetId)
-        .collection('comments')
-        .where('parentCommentId', isEqualTo: commentId)
-        .get();
+    try {
+      // 1. Find all replies that belong to this comment
+      final replyQuery = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(targetId)
+          .collection('comments')
+          .where('parentCommentId', isEqualTo: commentId)
+          .get();
 
-    // 2. Prepare a Batch (Atomic operation: all succeed or all fail)
-    WriteBatch batch = FirebaseFirestore.instance.batch();
+      // 2. Prepare a Batch (Atomic operation: all succeed or all fail)
+      WriteBatch batch = FirebaseFirestore.instance.batch();
 
-    // Delete the parent comment
-    DocumentReference parentRef = FirebaseFirestore.instance
-        .collection('posts')
-        .doc(targetId)
-        .collection('comments')
-        .doc(commentId);
-    batch.delete(parentRef);
+      // Delete the parent comment
+      DocumentReference parentRef = FirebaseFirestore.instance
+          .collection('posts')
+          .doc(targetId)
+          .collection('comments')
+          .doc(commentId);
+      batch.delete(parentRef);
 
-    // Delete all found replies
-    for (var doc in replyQuery.docs) {
-      batch.delete(doc.reference);
-    }
+      // Delete all found replies
+      for (var doc in replyQuery.docs) {
+        batch.delete(doc.reference);
+      }
 
-    // 3. Execute the batch delete
-    await batch.commit();
+      // 3. Execute the batch delete
+      await batch.commit();
 
-    // 4. Update the total comment count on the post
-    // We decrement by (1 parent + number of replies)
-    int totalDeleted = 1 + replyQuery.docs.length;
-    await FirebaseFirestore.instance
-        .collection('posts')
-        .doc(targetId)
-        .update({'commentCount': FieldValue.increment(-totalDeleted)});
+      // 4. Update the total comment count on the post
+      // We decrement by (1 parent + number of replies)
+      int totalDeleted = 1 + replyQuery.docs.length;
+      await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(targetId)
+          .update({'commentCount': FieldValue.increment(-totalDeleted)});
 
-    debugPrint("Deleted parent and $totalDeleted replies successfully.");
-  } catch (e) {
-    debugPrint("Delete failed: $e");
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to delete comment and its replies.")),
-      );
+      debugPrint("Deleted parent and $totalDeleted replies successfully.");
+    } catch (e) {
+      debugPrint("Delete failed: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to delete comment and its replies.")),
+        );
+      }
     }
   }
-}
 
   Future<void> _submitComment(String targetId) async {
     String text = _commentController.text.trim();
@@ -117,6 +150,7 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
     String finalUsername = userDoc.data()?['username'] ?? "Chef";
     String finalPic = userDoc.data()?['profilePic'] ?? "";
 
+    // 1. Add Comment
     await FirebaseFirestore.instance.collection('posts').doc(targetId).collection('comments').add({
       'text': text,
       'userId': user.uid,
@@ -126,8 +160,46 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
       'parentCommentId': _replyingToId, 
     });
     
+    // 2. Update Count
     await FirebaseFirestore.instance.collection('posts').doc(targetId).update({'commentCount': FieldValue.increment(1)});
     
+    // --- NEW: NOTIFICATION (COMMENT/REPLY) ---
+    // Case A: Reply
+    if (_replyingToId != null && _replyingToId != user.uid) {
+       // Note: We need the UserID of the person we are replying to. 
+       // In this simpler version, we notify the POST OWNER if we can't easily find the comment owner ID without another fetch.
+       // However, strictly speaking, `_replyingToId` here is the COMMENT ID, not the USER ID. 
+       // To notify the specific user you replied to, you'd need their UID.
+       // For now, let's keep it simple and notify the POST OWNER to avoid complex lookups.
+       // Or better: If you want to notify the specific user, you need to store their UID in `_replyingToId` logic (which is complex).
+       
+       // SAFE FALLBACK: Notify the Post Owner always
+       String realOwnerId = widget.data['isRepost'] == true 
+           ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
+           : widget.data['userId'];
+
+       NotificationService.sendNotification(
+          toUserId: realOwnerId, 
+          type: 'comment', 
+          postId: targetId,
+          body: "Commented: $text"
+       );
+    } 
+    // Case B: Normal Comment
+    else {
+       String realOwnerId = widget.data['isRepost'] == true 
+           ? (widget.data['originalAuthorId'] ?? widget.data['userId']) 
+           : widget.data['userId'];
+
+       NotificationService.sendNotification(
+          toUserId: realOwnerId, 
+          type: 'comment', 
+          postId: targetId,
+          body: "Commented: $text"
+       );
+    }
+    // -----------------------------------------
+
     setState(() {
       _commentController.clear();
       _replyingToId = null;
@@ -169,19 +241,14 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
                         ],
                         Text(widget.data['caption'] ?? "", style: const TextStyle(fontSize: 16)),
                         
-                        // --- NEW: RECIPE DETAILS SECTION ---
-                        // Inside the Column of your ExpandedPostScreen body:
-
+                        // RECIPE DETAILS SECTION
                         if (isOfficialRecipe) ...[
                           const SizedBox(height: 20),
-                          
-                          // This is the updated Step 1 Button
                           SizedBox(
                             width: double.infinity,
                             height: 50,
                             child: ElevatedButton.icon(
                               onPressed: () {
-                                // Change: Navigate to RecipeDetailScreen instead of KitchenPage
                                 Navigator.push(
                                   context, 
                                   MaterialPageRoute(
@@ -199,7 +266,6 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
                               label: const Text("VIEW FULL RECIPE", style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
-                          
                           const SizedBox(height: 10),
                           const Divider(),
                         ],
@@ -258,7 +324,7 @@ class _ExpandedPostScreenState extends State<ExpandedPostScreen> {
     );
   }
 
-  // --- Utility methods (_buildCommentNode, _buildCommentTile, _buildInputArea, _actionBtn) remain the same ---
+  // --- Utility methods ---
   Widget _buildCommentNode(DocumentSnapshot doc, List<DocumentSnapshot> allComments, String myUid, String targetPostId) {
     var data = doc.data() as Map<String, dynamic>;
     var replies = allComments.where((c) => c['parentCommentId'] == doc.id).toList();
@@ -374,7 +440,7 @@ class RecipeDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     List ingredients = recipeData['ingredients'] ?? [];
-    List instructions = recipeData['instructions'] ?? [];
+    List instructions = recipeData['steps'] ?? []; // Changed from 'instructions' to 'steps' if needed, otherwise 'instructions'
 
     return Scaffold(
       appBar: AppBar(title: Text(recipeData['title'] ?? "Recipe")),

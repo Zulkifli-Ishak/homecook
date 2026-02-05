@@ -12,7 +12,7 @@ import 'creation_screens.dart';
 import 'messaging_screens.dart';
 
 // ----------------------------------------------------------------------
-// 1. THE REUSABLE TEMPLATE
+// 1. THE REUSABLE TEMPLATE (Updated Background Color)
 // ----------------------------------------------------------------------
 class ProfileBaseLayout extends StatelessWidget {
   final String userId;
@@ -41,105 +41,159 @@ class ProfileBaseLayout extends StatelessWidget {
       length: tabCount,
       child: Scaffold(
         floatingActionButton: fab,
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            SliverAppBar(
-              expandedHeight: 440, 
-              pinned: true,
-              flexibleSpace: FlexibleSpaceBar(
-                background: StreamBuilder<DocumentSnapshot>(
-                  stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    var data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                    String? profilePic = data['profilePic'];
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+          builder: (context, snapshot) {
+            var data = snapshot.data?.data() as Map<String, dynamic>?;
+            String username = data?['username'] ?? "";
+            String bio = data?['bio'] ?? "";
+            String pic = data?['profilePic'] ?? "";
+            
+            return NestedScrollView(
+              headerSliverBuilder: (context, _) => [
+                // --- 1. SLIVER APP BAR (Green Background) ---
+                SliverAppBar(
+                  pinned: true,
+                  floating: true,
+                  backgroundColor: Colors.transparent, // <--- CHANGED HERE
+                  foregroundColor: Colors.black, 
+                  elevation: 0,
+                  centerTitle: true,
+                  title: null, 
+                ),
 
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 80, bottom: 20),
-                      child: Column(
+                // --- 2. PROFILE INFO SECTION ---
+                SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      // Avatar
+                      GestureDetector(
+                        onTap: onAvatarTap,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 50,
+                              backgroundColor: Colors.green.shade100,
+                              backgroundImage: (pic.isNotEmpty) ? NetworkImage(pic) : null,
+                              child: (pic.isEmpty) ? const Icon(Icons.person, size: 50, color: Colors.green) : null,
+                            ),
+                            if (isUploading)
+                              const Positioned.fill(child: CircularProgressIndicator(color: Colors.white)),
+                          ],
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 12),
+
+                      // Name below picture
+                      Text(
+                        username, 
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)
+                      ),
+
+                      if (bio.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Text(bio, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+
+                      // STATS ROW
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          GestureDetector(
-                            onTap: onAvatarTap,
-                            child: CircleAvatar(
-                              radius: 40,
-                              backgroundColor: Colors.green[100],
-                              backgroundImage: (profilePic != null && profilePic != "") 
-                                  ? NetworkImage(profilePic) : null,
-                              child: isUploading 
-                                  ? const CircularProgressIndicator() 
-                                  : (profilePic == null || profilePic == "") 
-                                      ? const Icon(Icons.person, size: 40, color: Colors.green) : null,
-                            ),
+                          _buildStatItem(
+                            "Followers", 
+                            "${data?['followers'] ?? 0}", 
+                            () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserListScreen(
+                                title: "Followers", userId: userId, collectionPath: 'followers'
+                            )))
                           ),
-                          const SizedBox(height: 10),
-                          Text(data['username'] ?? "Cook", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 15),
-                          
-                          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                            _stat("Following", "${data['following'] ?? 0}"),
-                            _stat("Followers", "${data['followers'] ?? 0}"),
-                            _stat("Recipes", "${data['recipeCount'] ?? 0}"), 
-                          ]),
-                          
-                          const SizedBox(height: 25),
-                          if (showStars) 
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.orange[50], 
-                                borderRadius: BorderRadius.circular(15), 
-                                border: Border.all(color: Colors.orange[200]!)
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min, 
-                                children: [
-                                  const Icon(Icons.stars, color: Colors.orange),
-                                  const SizedBox(width: 10),
-                                  Text("${data['stars'] ?? 0} Stars", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
-                                ]
-                              ),
-                            ),
-                          const SizedBox(height: 15),
-                          if (actionButton != null) actionButton!,
+                          _buildStatItem(
+                            "Following", 
+                            "${data?['following'] ?? 0}",
+                            () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserListScreen(
+                                title: "Following", userId: userId, collectionPath: 'following'
+                            )))
+                          ),
+                          _buildStatItem(
+                            "Recipes", 
+                            "${data?['recipeCount'] ?? 0}", 
+                            null 
+                          ),
                         ],
                       ),
-                    );
-                  },
-                ),
-              ),
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(48),
-                child: Material(
-                  color: Colors.white,
-                  child: TabBar(
-                    labelColor: Colors.green,
-                    indicatorColor: Colors.green,
-                    tabs: [
-                      const Tab(text: "Posts"),
-                      const Tab(text: "Recipes"),
-                      if (showSavedTab) const Tab(text: "Saved"),
+                      
+                      const SizedBox(height: 20),
+                      if (actionButton != null) actionButton!,
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),
+
+                // --- 3. STICKY TABS ---
+                SliverPersistentHeader(
+                  delegate: _SliverAppBarDelegate(
+                    TabBar(
+                      labelColor: Colors.green,
+                      unselectedLabelColor: Colors.grey,
+                      indicatorColor: Colors.green,
+                      tabs: [
+                        const Tab(text: "Posts"),
+                        const Tab(text: "Recipes"),
+                        if (showSavedTab) const Tab(text: "Saved"),
+                      ],
+                    ),
+                  ),
+                  pinned: true,
+                ),
+              ],
+              body: TabBarView(
+                children: [
+                  PostsTab(viewingUid: userId),
+                  const RecipesTab(),
+                  if (showSavedTab) const SavedTab(),
+                ],
               ),
-            ),
-          ],
-          body: TabBarView(
-            children: [
-              PostsTab(viewingUid: userId),
-              const RecipesTab(),
-              if (showSavedTab) const EmptyStateWidget(message: "No saved recipes yet"),
-            ],
-          ),
+            );
+          }
         ),
       ),
     );
   }
 
-  Widget _stat(String label, String val) => Column(children: [
-    Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-    Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey))
-  ]);
+  Widget _buildStatItem(String label, String count, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          children: [
+            Text(count, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Needed for the sticky TabBar
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar _tabBar;
+  _SliverAppBarDelegate(this._tabBar);
+  @override
+  double get minExtent => _tabBar.preferredSize.height;
+  @override
+  double get maxExtent => _tabBar.preferredSize.height;
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(color: Colors.white, child: _tabBar);
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => false;
 }
 
 // ----------------------------------------------------------------------
@@ -315,13 +369,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text("Not logged in")));
+    }
+
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
-        String? currentPic = snapshot.data?['profilePic'];
+        // --- FIX START: HANDLE LOADING & NEW USERS ---
+        
+        // 1. Connection Loading
+        if (snapshot.connectionState == ConnectionState.waiting) {
+           return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        // 2. Data Missing (Race Condition Fix)
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+           return const Scaffold(
+             body: Center(
+               child: Column(
+                 mainAxisAlignment: MainAxisAlignment.center,
+                 children: [
+                   CircularProgressIndicator(),
+                   SizedBox(height: 20),
+                   Text("Setting up your profile..."),
+                 ],
+               )
+             )
+           );
+        }
+        // --- FIX END ---
+
+        // Data is now safe to use
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        String? currentPic = data['profilePic'];
         
         return ProfileBaseLayout(
-          userId: user?.uid ?? "",
+          userId: user.uid,
           showStars: true, 
           showSavedTab: true,
           isUploading: _isUploading,
@@ -374,13 +458,17 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   }
 
   void _checkFollowStatus() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(me)
-        .collection('following')
-        .doc(widget.userId)
-        .get();
-    if (mounted) setState(() => isFollowing = doc.exists);
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(me)
+          .collection('following')
+          .doc(widget.userId)
+          .get();
+      if (mounted) setState(() => isFollowing = doc.exists);
+    } catch (e) {
+      debugPrint("Error checking follow status: $e");
+    }
   }
 
   void _viewFullImage(String? url) {
@@ -440,15 +528,26 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     final followerRef = FirebaseFirestore.instance.collection('users').doc(widget.userId).collection('followers').doc(me);
 
     if (isFollowing) {
+      // UNFOLLOW
       await followRef.delete();
       await followerRef.delete();
       await FirebaseFirestore.instance.collection('users').doc(me).update({'following': FieldValue.increment(-1)});
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({'followers': FieldValue.increment(-1)});
     } else {
+      // FOLLOW
       await followRef.set({'timestamp': FieldValue.serverTimestamp()});
       await followerRef.set({'timestamp': FieldValue.serverTimestamp()});
       await FirebaseFirestore.instance.collection('users').doc(me).update({'following': FieldValue.increment(1)});
       await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({'followers': FieldValue.increment(1)});
+
+      // --- NEW: SEND NOTIFICATION (FOLLOW) ---
+      NotificationService.sendNotification(
+        toUserId: widget.userId, 
+        type: 'follow', 
+        postId: "", // No post involved in a follow
+        body: "started following you."
+      );
+      // ---------------------------------------
     }
     setState(() => isFollowing = !isFollowing);
   }
@@ -458,62 +557,75 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(widget.userId).snapshots(),
       builder: (context, snapshot) {
-        String? profilePic = snapshot.data?['profilePic'];
-        String chefName = snapshot.data?['username'] ?? "Chef";
+        // 1. Loading
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
+        }
+
+        // 2. Error/Missing
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+           return Scaffold(appBar: AppBar(), body: const Center(child: Text("User not found")));
+        }
+
+        // 3. Success
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        String? profilePic = data['profilePic'];
+        String chefName = data['username'] ?? "Chef";
         
-        return ProfileBaseLayout(
-          userId: widget.userId,
-          onAvatarTap: () => _viewFullImage(profilePic),
-          actionButton: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 45,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isFollowing ? Colors.grey[200] : Colors.green,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => isFollowing ? _confirmUnfollow(context) : _handleFollowAction(),
-                      child: Text(
-                        isFollowing ? "Followed" : "Follow", 
-                        style: TextStyle(
-                          color: isFollowing ? Colors.black87 : Colors.white, 
-                          fontWeight: FontWeight.bold
-                        )
+        return Scaffold(
+          body: ProfileBaseLayout(
+            userId: widget.userId,
+            onAvatarTap: () => _viewFullImage(profilePic),
+            actionButton: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 45,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isFollowing ? Colors.grey[200] : Colors.green,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => isFollowing ? _confirmUnfollow(context) : _handleFollowAction(),
+                        child: Text(
+                          isFollowing ? "Followed" : "Follow", 
+                          style: TextStyle(
+                            color: isFollowing ? Colors.black87 : Colors.white, 
+                            fontWeight: FontWeight.bold
+                          )
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (isFollowing) ...[
-                  const SizedBox(width: 12),
-                  Container(
-                    height: 45, width: 45,
-                    decoration: BoxDecoration(
-                      color: Colors.green[50], 
-                      borderRadius: BorderRadius.circular(12)
-                    ),
-                    child: IconButton(
-                      onPressed: () {
-                        // NAVIGATE TO DM
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatRoomScreen(
-                              receiverId: widget.userId,
-                              receiverName: chefName,
+                  if (isFollowing) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      height: 45, width: 45,
+                      decoration: BoxDecoration(
+                        color: Colors.green[50], 
+                        borderRadius: BorderRadius.circular(12)
+                      ),
+                      child: IconButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ChatRoomScreen(
+                                receiverId: widget.userId,
+                                receiverName: chefName,
+                              ),
                             ),
-                          ),
-                        );
-                      }, 
-                      icon: const Icon(Icons.mail_outline, color: Colors.green)
-                    ),
-                  )
-                ]
-              ],
+                          );
+                        }, 
+                        icon: const Icon(Icons.mail_outline, color: Colors.green)
+                      ),
+                    )
+                  ]
+                ],
+              ),
             ),
           ),
         );
@@ -558,4 +670,92 @@ class RecipesTab extends StatelessWidget {
   const RecipesTab({super.key});
   @override
   Widget build(BuildContext context) => const EmptyStateWidget(message: "No official recipes yet");
+}
+
+
+// ----------------------------------------------------------------------
+// 7. USER LIST SCREEN (Show Followers/Following)
+// ----------------------------------------------------------------------
+class UserListScreen extends StatelessWidget {
+  final String title;
+  final String userId;
+  final String collectionPath; // 'followers' or 'following'
+
+  const UserListScreen({super.key, required this.title, required this.userId, required this.collectionPath});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title), centerTitle: true),
+      body: StreamBuilder<QuerySnapshot>(
+        // 1. Get the list of IDs from the subcollection
+        stream: FirebaseFirestore.instance.collection('users').doc(userId).collection(collectionPath).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          
+          var docs = snapshot.data!.docs;
+          if (docs.isEmpty) return Center(child: Text("No $title yet"));
+
+          return ListView.builder(
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              String otherUserId = docs[index].id;
+              
+              // 2. For each ID, fetch the actual user profile
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('users').doc(otherUserId).snapshots(),
+                builder: (context, userSnap) {
+                  String name = "Loading...";
+                  String pic = "";
+                  
+                  if (userSnap.hasData && userSnap.data != null && userSnap.data!.exists) {
+                    var data = userSnap.data!.data() as Map<String, dynamic>;
+                    name = data['username'] ?? "Unknown";
+                    pic = data['profilePic'] ?? "";
+                  } else if (userSnap.connectionState == ConnectionState.active) {
+                    name = "User not found"; // User might be deleted
+                  }
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundImage: (pic.isNotEmpty) ? NetworkImage(pic) : null,
+                      child: (pic.isEmpty) ? const Icon(Icons.person) : null,
+                    ),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                    onTap: () {
+                      // Navigate to their profile
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => PublicProfilePage(userId: otherUserId)));
+                    },
+                  );
+                }
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+// ----------------------------------------------------------------------
+// 8. SAVED TAB (Placeholder)
+// ----------------------------------------------------------------------
+class SavedTab extends StatelessWidget {
+  const SavedTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.bookmark_border, size: 50, color: Colors.grey),
+          SizedBox(height: 10),
+          Text("Saved recipes will appear here.", style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
 }

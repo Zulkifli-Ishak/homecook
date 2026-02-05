@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 // --- 1. VIDEO PLAYER ---
 class VideoPlayerWidget extends StatefulWidget {
@@ -89,5 +92,31 @@ class EmptyStateWidget extends StatelessWidget {
       const SizedBox(height: 10),
       Text(message, style: const TextStyle(color: Colors.grey)),
     ]));
+  }
+}
+
+// ----------------------------------------------------------------------
+// 4. NOTIFICATION HELPER
+// ----------------------------------------------------------------------
+class NotificationService {
+  static Future<void> sendNotification({
+    required String toUserId,
+    required String type, // 'like', 'comment', 'repost', 'reply'
+    required String postId,
+    String? body,
+  }) async {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null || me.uid == toUserId) return; // Don't notify yourself
+
+    await FirebaseFirestore.instance.collection('users').doc(toUserId).collection('notifications').add({
+      'fromId': me.uid,
+      'fromName': me.displayName ?? "Someone",
+      'fromPic': me.photoURL ?? "",
+      'type': type,
+      'postId': postId,
+      'body': body ?? "",
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
   }
 }
